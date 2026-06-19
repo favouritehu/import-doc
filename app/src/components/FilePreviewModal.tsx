@@ -1,6 +1,7 @@
-import { useRef, useState, type ChangeEvent } from 'react';
-import { AlertTriangle, FileText, Trash2 } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { AlertTriangle, FileText, Trash2, Upload } from 'lucide-react';
 import type { Doc, ImportFile, Invoice } from '../types';
+import { cx } from '../lib/cx';
 import { CORRECTION_REASONS, docLabel, docStatusMeta } from '../lib/docs';
 import { previewFields } from '../lib/docPreview';
 import { RolePolicy } from '../lib/rolePolicy';
@@ -11,6 +12,48 @@ import { SlideOver } from './Overlay';
 
 const isImage = (name?: string | null) => !!name && /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name);
 const isPdf = (name?: string | null) => !!name && /\.pdf$/i.test(name);
+
+const LABEL_VARIANTS = {
+  primary: 'bg-navy text-white hover:bg-blue',
+  amber: 'bg-amber text-navy hover:opacity-90',
+  ghost: 'border border-border bg-white text-medium hover:border-navy',
+} as const;
+
+/**
+ * Native <label>-wrapped file input. The label↔input association opens the OS
+ * picker on click in EVERY browser (Safari included) — unlike a hidden input
+ * triggered by ref.click(), which Safari ignores.
+ */
+function UploadLabel({
+  variant,
+  onFile,
+  children,
+}: {
+  variant: keyof typeof LABEL_VARIANTS;
+  onFile: (f: File) => void;
+  children: ReactNode;
+}) {
+  return (
+    <label
+      className={cx(
+        'inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition',
+        LABEL_VARIANTS[variant],
+      )}
+    >
+      <input
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) onFile(f);
+        }}
+      />
+      {children}
+    </label>
+  );
+}
 
 export function FilePreviewModal({
   file,
@@ -33,23 +76,8 @@ export function FilePreviewModal({
   const [flagging, setFlagging] = useState(false);
   const [reason, setReason] = useState(`${CORRECTION_REASONS[0].zh} · ${CORRECTION_REASONS[0].en}`);
 
-  // real client-side file picker (held in memory via object URL; no backend in Phase A)
-  const inputRef = useRef<HTMLInputElement>(null);
-  const mode = useRef<'upload' | 'reupload'>('upload');
-
-  const pick = (m: 'upload' | 'reupload') => {
-    mode.current = m;
-    inputRef.current?.click();
-  };
-
-  const onPicked = (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = '';
-    if (!f) return;
-    const url = URL.createObjectURL(f);
-    if (mode.current === 'reupload') reuploadDoc(file.id, doc.type, { ...target, fileName: f.name, fileUrl: url });
-    else uploadDoc(file.id, doc.type, { ...target, fileName: f.name, fileUrl: url });
-  };
+  const doUpload = (f: File) => uploadDoc(file.id, doc.type, { ...target, fileName: f.name, fileUrl: URL.createObjectURL(f) });
+  const doReupload = (f: File) => reuploadDoc(file.id, doc.type, { ...target, fileName: f.name, fileUrl: URL.createObjectURL(f) });
 
   const actions = () => {
     if (flagging) {
@@ -87,7 +115,11 @@ export function FilePreviewModal({
 
     switch (doc.status) {
       case 'missing':
-        return <Button onClick={() => pick('upload')}>Choose file &amp; upload</Button>;
+        return (
+          <UploadLabel variant="primary" onFile={doUpload}>
+            <Upload size={15} /> Choose file &amp; upload
+          </UploadLabel>
+        );
       case 'uploaded':
       case 'under_review':
       case 'corrected':
@@ -110,9 +142,9 @@ export function FilePreviewModal({
             <Button variant="ghost" onClick={() => requestCorrection(file.id, doc.type, target)}>
               Request correction
             </Button>
-            <Button variant="amber" onClick={() => pick('reupload')}>
-              Re-upload corrected file
-            </Button>
+            <UploadLabel variant="amber" onFile={doReupload}>
+              <Upload size={14} /> Re-upload corrected file
+            </UploadLabel>
           </div>
         );
       case 'approved':
@@ -123,9 +155,9 @@ export function FilePreviewModal({
                 <Trash2 size={14} /> Remove
               </Button>
             )}
-            <Button variant="ghost" onClick={() => pick('reupload')}>
-              Re-upload new version
-            </Button>
+            <UploadLabel variant="ghost" onFile={doReupload}>
+              <Upload size={14} /> Re-upload new version
+            </UploadLabel>
           </div>
         );
     }
@@ -138,8 +170,6 @@ export function FilePreviewModal({
       onClose={onClose}
       footer={actions()}
     >
-      <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={onPicked} />
-
       <div className="mb-4 flex items-center justify-between">
         <Badge tint={docStatusMeta[doc.status]} />
         <span className="text-[11px] text-muted">v{doc.version ?? 1}</span>
