@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
+import { LogOut } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { navForRole } from '../lib/nav';
 import { navBadges } from '../lib/pending';
@@ -20,10 +21,10 @@ export function Logo({ size = 36 }: { size?: number }) {
 }
 
 export function Sidebar() {
-  const { role, files } = useStore();
+  const { role, user, files, signOut } = useStore();
   const badges = navBadges(files);
   const items = navForRole(role);
-  const me = USERS.find((u) => u.role === role);
+  const me = user ?? USERS.find((u) => u.role === role);
   const nav = useNavigate();
 
   return (
@@ -80,6 +81,15 @@ export function Sidebar() {
             Preview CHA link →
           </button>
         )}
+        <button
+          onClick={() => {
+            signOut();
+            nav('/welcome', { replace: true });
+          }}
+          className="mt-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[12px] font-semibold text-white/55 transition hover:text-white"
+        >
+          <LogOut size={14} /> Sign out
+        </button>
       </div>
     </aside>
   );

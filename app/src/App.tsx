@@ -1,5 +1,8 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import { AppShell } from './components/AppShell';
+import { useStore } from './store/store';
+import { Welcome } from './screens/Welcome';
 import { Dashboard } from './screens/Dashboard';
 import { FilesList } from './screens/FilesList';
 import { CreateFile } from './screens/CreateFile';
@@ -12,10 +15,26 @@ import { Settings } from './screens/Settings';
 import { Alerts } from './screens/Alerts';
 import { MagicLinkPage } from './screens/MagicLinkPage';
 
+/** Internal routes require a signed-in user (Phase A: demo sign-in). External
+ *  magic-link routes stay public. */
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { user } = useStore();
+  if (!user) return <Navigate to="/welcome" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <Routes>
-      <Route element={<AppShell />}>
+      <Route path="/welcome" element={<Welcome />} />
+
+      <Route
+        element={
+          <RequireAuth>
+            <AppShell />
+          </RequireAuth>
+        }
+      >
         <Route path="/" element={<Dashboard />} />
         <Route path="/files" element={<FilesList />} />
         <Route path="/files/new" element={<CreateFile />} />
@@ -27,9 +46,10 @@ export default function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/alerts" element={<Alerts />} />
       </Route>
+
       <Route path="/u/:fileNumber/fwd/:token" element={<MagicLinkPage party="forwarder" />} />
       <Route path="/u/:fileNumber/cha/:token" element={<MagicLinkPage party="cha" />} />
-      <Route path="*" element={<Dashboard />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

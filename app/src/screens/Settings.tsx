@@ -1,4 +1,5 @@
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { LogOut } from 'lucide-react';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
 import { FilterTabs } from '../components/FilterTabs';
@@ -8,7 +9,8 @@ import { ITEMS, SUPPLIERS, TEMPLATES, USERS } from '../data/seed';
 import { useStore } from '../store/store';
 
 export function Settings() {
-  const { role, showToast } = useStore();
+  const { role, user, showToast, signOut } = useStore();
+  const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') ?? 'users';
   const canHsn = RolePolicy.canSeeHsn(role);
@@ -24,6 +26,30 @@ export function Settings() {
     <>
       <TopBar title="Settings" subtitle="Masters & access" />
       <Page>
+        {user && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-card border border-border bg-white p-3 shadow-card">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-navy text-xs font-bold text-white">
+                {user.initials}
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-ink">{user.name}</div>
+                <div className="truncate text-xs text-muted">
+                  {ROLE_LABEL[user.role]} · {user.email}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                signOut();
+                nav('/welcome', { replace: true });
+              }}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-medium hover:border-red hover:text-red"
+            >
+              <LogOut size={14} /> Sign out
+            </button>
+          </div>
+        )}
         <div className="mb-4 flex items-center justify-between gap-3">
           <FilterTabs tabs={tabs} active={tab} onChange={(t) => setParams({ tab: t }, { replace: true })} />
           <button

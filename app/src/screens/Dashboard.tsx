@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, FileWarning, FolderOpen, Ship, Wallet } from 'lucide-react';
+import { AlertTriangle, FileWarning, FolderOpen, FolderPlus, Plus, Ship, Wallet } from 'lucide-react';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
 import { StatCard } from '../components/StatCard';
@@ -32,8 +32,25 @@ export function Dashboard() {
     <>
       <TopBar title="Dashboard" subtitle={`${open.length} open imports · ${alerts.length} alerts`} />
       <Page>
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+        {files.length === 0 ? (
+          <div className="grid place-items-center rounded-card border border-dashed border-divider bg-white px-6 py-16 text-center">
+            <div className="mb-3 grid h-12 w-12 place-items-center rounded-full bg-page text-muted">
+              <FolderPlus size={22} />
+            </div>
+            <p className="font-display text-base font-bold text-ink">No imports yet</p>
+            <p className="mt-1 max-w-sm text-sm text-muted">
+              Create your first import file to track documents, payments and customs in one place.
+            </p>
+            <button
+              onClick={() => nav('/files/new')}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-blue"
+            >
+              <Plus size={16} /> Create import file
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2">
             {alerts.length > 0 && (
               <section className="mb-5">
                 <h2 className="mb-2 font-display text-sm font-bold text-ink">Needs attention</h2>
@@ -95,7 +112,8 @@ export function Dashboard() {
               })}
             </div>
           </aside>
-        </div>
+          </div>
+        )}
       </Page>
     </>
   );

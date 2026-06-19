@@ -16,6 +16,7 @@ import type {
   PaymentType,
   Priority,
   Role,
+  User,
 } from '../types';
 import { SEED_FILES, USERS } from '../data/seed';
 import { mkChecklist, mkInvoice, type InvoiceDraft } from '../lib/checklist';
@@ -25,6 +26,17 @@ import { CHA_STEPS } from '../lib/docs';
 export const TODAY = '18 Jun 2026';
 
 const userName = (role: Role): string => USERS.find((u) => u.role === role)?.name ?? 'Owner';
+
+const USER_KEY = 'import-desk-user';
+function loadUser(): User | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const id = window.localStorage.getItem(USER_KEY);
+    return id ? USERS.find((u) => u.id === Number(id)) ?? null : null;
+  } catch {
+    return null;
+  }
+}
 
 let fileSeq = Math.max(...SEED_FILES.map((f) => f.id)) + 1;
 const nextFileNumber = () => `IMP-25-${String(fileSeq).padStart(4, '0')}`;
@@ -66,9 +78,12 @@ export interface DocTarget {
 
 interface Store {
   role: Role;
+  user: User | null;
   files: ImportFile[];
   toast: string | null;
   setRole: (r: Role) => void;
+  signIn: (u: User) => void;
+  signOut: () => void;
   showToast: (m: string) => void;
   getFile: (id: number) => ImportFile | undefined;
   getFileByNumber: (n: string) => ImportFile | undefined;
@@ -107,9 +122,36 @@ export interface TemplateLike {
 const StoreCtx = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [role, setRole] = useState<Role>('admin');
+  const [user, setUser] = useState<User | null>(() => loadUser());
+  const role: Role = user?.role ?? 'admin';
   const [files, setFiles] = useState<ImportFile[]>(SEED_FILES);
   const [toast, setToast] = useState<string | null>(null);
+
+  const signIn = useCallback((u: User) => {
+    setUser(u);
+    try {
+      window.localStorage.setItem(USER_KEY, String(u.id));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const signOut = useCallback(() => {
+    setUser(null);
+    try {
+      window.localStorage.removeItem(USER_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const setRole = useCallback(
+    (r: Role) => {
+      const u = USERS.find((x) => x.role === r);
+      if (u) signIn(u);
+    },
+    [signIn],
+  );
 
   const showToast = useCallback((m: string) => {
     setToast(m);
@@ -146,12 +188,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       mutateDoc(fileId, type, t?.invoiceId, (d) => ({
         ...d,
         status,
-        by: status === 'missing' ? null : t?.by ?? userName(role),
+        by: status === 'missing' ? null : t?.by ?? user?.name ?? userName(role),
         at: status === 'missing' ? null : TODAY,
         ...extra,
       }));
     },
-    [mutateDoc, role],
+    [mutateDoc, role, user],
   );
 
   const uploadDoc = useCallback(
@@ -201,7 +243,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...d,
         status: 'under_review',
         reason: null,
-        by: t?.by ?? userName(role),
+        by: t?.by ?? user?.name ?? userName(role),
         at: TODAY,
         version: (d.version ?? 1) + 1,
         fileName: t?.fileName ?? d.fileName ?? null,
@@ -209,7 +251,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }));
       showToast('Corrected document re-submitted');
     },
-    [mutateDoc, role, showToast],
+    [mutateDoc, role, user, showToast],
   );
 
   const clearDoc = useCallback(
@@ -281,7 +323,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addNote = useCallback(
     (fileId: number, message: string) => {
-      const u = USERS.find((x) => x.role === role);
+      const u = user ?? USERS.find((x) => x.role === role);
       patchFile(fileId, (f) => ({
         ...f,
         notes: [
@@ -290,7 +332,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ],
       }));
     },
-    [patchFile, role],
+    [patchFile, role, user],
   );
 
   const markClosed = useCallback(
@@ -419,9 +461,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Store>(
     () => ({
       role,
+      user,
       files,
       toast,
       setRole,
+      signIn,
+      signOut,
       showToast,
       getFile: (id) => files.find((f) => f.id === id),
       getFileByNumber: (n) => files.find((f) => f.fileNumber === n),
@@ -445,8 +490,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }),
     [
       role,
+      user,
       files,
       toast,
+      signIn,
+      signOut,
       showToast,
       createFromTemplate,
       createBlank,
