@@ -1,0 +1,99 @@
+:root {
+  --navy: #0a1f3d;
+  --blue: #1e4175;
+  --amber: #f59e0b;
+  --green: #16a34a;
+  --red: #dc2626;
+  --page: #f6f7f9;
+  --border: #e5e7eb;
+  --ink: #0f172a;
+  --muted: #64748b;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ── Animations ─────────────────────────────────────────────── */
+@keyframes idkpop {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes idkpulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes idktoast {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.anim-pop {
+  animation: idkpop 0.4s ease both;
+}
+.anim-pulse {
+  animation: idkpulse 1.6s ease-in-out infinite;
+}
+.anim-toast {
+  animation: idktoast 0.28s ease both;
+}
+
+/* ── Custom scrollbar ───────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cdd5df transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #cdd5df;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Hide horizontal scrollbar chrome on tab strips while keeping scroll */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

@@ -1,0 +1,16 @@
+{
+  "_comment": "Phase-B MySQL MCP wiring. Credential-free template — fill via env, do not commit secrets.",
+  "mcpServers": {
+    "mysql": {
+      "command": "npx",
+      "args": ["-y", "@benborla29/mcp-server-mysql"],
+      "env": {
+        "MYSQL_HOST": "localhost",
+        "MYSQL_PORT": "3306",
+        "MYSQL_USER": "import_desk",
+        "MYSQL_PASS": "",
+        "MYSQL_DB": "import_desk"
+      }
+    }
+  }
+}

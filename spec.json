@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "name": "Import Desk",
+    "slug": "import-desk",
+    "description": "Favourite Fab Import Control Tower — track India imports (docs, payments, CHA) with live-derived status",
+    "domain": "import-export-operations",
+    "pattern": "control-tower",
+    "complexity": "high",
+    "risk": "low",
+    "phase": "A"
+  },
+  "stack": {
+    "frontend": "React 18 + Vite 5 + TypeScript (strict) + Tailwind 3.4 + React Router 6",
+    "backend": "Fastify 5 + MySQL 8 (Phase B; route stubs in Phase A)",
+    "test": "Vitest (jsdom)"
+  },
+  "roles": ["admin", "import_manager", "accountant"],
+  "screens": [
+    "Dashboard", "FilesList", "CreateFile", "FileDetail", "PendingDocs",
+    "PendingPayments", "ChaDesk", "Reports", "Settings", "Alerts", "MagicLinkPage"
+  ],
+  "hard_rules": {
+    "financials_role_gated": ["invoice_value", "fx", "payments_tab", "duty", "hsn", "landed_cost", "approve"],
+    "can_mark_closed": "admin_only",
+    "external_routes": ["/u/:fileNumber/fwd/:token", "/u/:fileNumber/cha/:token"],
+    "create_max_typed_fields": 3,
+    "one_primary_action_per_file_screen": true
+  },
+  "data_model": {
+    "multi_invoice": true,
+    "invoice_owns": ["supplier", "invoice_number", "value", "hsn", "commercial_invoice", "packing_list"],
+    "file_level": ["bl", "payments", "duty", "cha_steps", "customs_docs"]
+  },
+  "schema_tables": [
+    "supplier", "item_master", "app_user", "import_file", "container", "import_line_item",
+    "document", "payment", "duty_breakup", "cha_status", "note", "access_link",
+    "audit_log", "file_template"
+  ],
+  "deferred_phase_b": [
+    "fastify_mysql_wiring", "google_oauth", "signed_revocable_tokens", "storage_service",
+    "real_file_upload", "server_side_field_projection", "audit_screen", "deepseek_ai_addendum"
+  ]
+}
