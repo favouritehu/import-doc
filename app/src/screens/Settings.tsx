@@ -1,19 +1,24 @@
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LogOut } from 'lucide-react';
+import { AlertTriangle, LogOut, RotateCcw, Trash2 } from 'lucide-react';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
 import { FilterTabs } from '../components/FilterTabs';
+import { Button } from '../components/Button';
+import { Modal } from '../components/Overlay';
 import { cx } from '../lib/cx';
 import { ROLE_LABEL, RolePolicy } from '../lib/rolePolicy';
 import { ITEMS, SUPPLIERS, TEMPLATES, USERS } from '../data/seed';
 import { useStore } from '../store/store';
 
 export function Settings() {
-  const { role, user, showToast, signOut } = useStore();
+  const { role, user, showToast, signOut, clearAll, resetDemo } = useStore();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
+  const [confirm, setConfirm] = useState<'clear' | 'reset' | null>(null);
   const tab = params.get('tab') ?? 'users';
   const canHsn = RolePolicy.canSeeHsn(role);
+  const isAdmin = role === 'admin';
 
   const tabs = [
     { key: 'users', label: 'Users' },
@@ -90,7 +95,57 @@ export function Settings() {
             </Table>
           )}
         </div>
+
+        {isAdmin && (
+          <div className="mt-5 rounded-card border border-red/30 bg-red/5 p-4">
+            <div className="flex items-center gap-2 text-red">
+              <AlertTriangle size={16} />
+              <h3 className="font-display text-sm font-bold">Danger zone</h3>
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              Data lives in this browser only. Clear it to start fresh, or restore the demo set.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="danger" onClick={() => setConfirm('clear')}>
+                <Trash2 size={14} /> Clear all data
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirm('reset')}>
+                <RotateCcw size={14} /> Reset to demo data
+              </Button>
+            </div>
+          </div>
+        )}
       </Page>
+
+      {confirm && (
+        <Modal
+          title={confirm === 'clear' ? 'Clear all data?' : 'Reset to demo data?'}
+          onClose={() => setConfirm(null)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setConfirm(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant={confirm === 'clear' ? 'danger' : 'primary'}
+                onClick={() => {
+                  if (confirm === 'clear') clearAll();
+                  else resetDemo();
+                  setConfirm(null);
+                }}
+              >
+                {confirm === 'clear' ? 'Clear everything' : 'Restore demo'}
+              </Button>
+            </div>
+          }
+        >
+          <p className="text-sm text-medium">
+            {confirm === 'clear'
+              ? 'Removes every import file, document and upload from this browser. You start with an empty workspace. Cannot be undone.'
+              : 'Replaces current data with the 7 demo import files. Your current data will be lost.'}
+          </p>
+        </Modal>
+      )}
     </>
   );
 }

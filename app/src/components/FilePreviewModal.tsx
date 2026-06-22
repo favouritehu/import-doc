@@ -76,8 +76,17 @@ export function FilePreviewModal({
   const [flagging, setFlagging] = useState(false);
   const [reason, setReason] = useState(`${CORRECTION_REASONS[0].zh} · ${CORRECTION_REASONS[0].en}`);
 
-  const doUpload = (f: File) => uploadDoc(file.id, doc.type, { ...target, fileName: f.name, fileUrl: URL.createObjectURL(f) });
-  const doReupload = (f: File) => reuploadDoc(file.id, doc.type, { ...target, fileName: f.name, fileUrl: URL.createObjectURL(f) });
+  // Read as a data URL (not a blob URL) so the file persists to localStorage and
+  // re-renders after reload.
+  const readUrl = (f: File, cb: (url: string) => void) => {
+    const r = new FileReader();
+    r.onload = () => cb(typeof r.result === 'string' ? r.result : '');
+    r.readAsDataURL(f);
+  };
+  const doUpload = (f: File) =>
+    readUrl(f, (url) => uploadDoc(file.id, doc.type, { ...target, fileName: f.name, fileUrl: url }));
+  const doReupload = (f: File) =>
+    readUrl(f, (url) => reuploadDoc(file.id, doc.type, { ...target, fileName: f.name, fileUrl: url }));
 
   const actions = () => {
     if (flagging) {

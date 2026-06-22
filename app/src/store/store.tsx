@@ -3,7 +3,15 @@
 // the UI recomputes live. Doc actions take an optional invoiceId to target a
 // per-invoice CI/PL instead of a file-level doc.
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import type {
   Currency,
   Doc,
@@ -38,8 +46,21 @@ function loadUser(): User | null {
   }
 }
 
-let fileSeq = Math.max(...SEED_FILES.map((f) => f.id)) + 1;
-const nextFileNumber = () => `IMP-25-${String(fileSeq).padStart(4, '0')}`;
+const FILES_KEY = 'import-desk-files';
+function loadFiles(): ImportFile[] {
+  if (typeof window === 'undefined') return SEED_FILES;
+  try {
+    const raw = window.localStorage.getItem(FILES_KEY);
+    return raw ? (JSON.parse(raw) as ImportFile[]) : SEED_FILES;
+  } catch {
+    return SEED_FILES;
+  }
+}
+
+// Next file id / number derived from current files (persistence-safe — no stale
+// module counter that would collide with reloaded data).
+const nextId = (fs: ImportFile[]): number => fs.reduce((m, f) => Math.max(m, f.id), 0) + 1;
+const fileNo = (id: number): string => `IMP-25-${String(id).padStart(4, '0')}`;
 
 // ── Action payloads ───────────────────────────────────────────────────
 
@@ -99,6 +120,8 @@ interface Store {
   reuploadDoc: (fileId: number, type: string, t?: DocTarget) => void;
   clearDoc: (fileId: number, type: string, invoiceId?: string) => void;
   deleteFile: (fileId: number) => void;
+  clearAll: () => void;
+  resetDemo: () => void;
   markPaid: (fileId: number, idx: number) => void;
   addPayment: (fileId: number, p: { type: PaymentType; amount: number; currency: Currency; due: string }) => void;
   toggleChaStep: (fileId: number, stepKey: string) => void;
@@ -124,7 +147,7 @@ const StoreCtx = createContext<Store | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => loadUser());
   const role: Role = user?.role ?? 'admin';
-  const [files, setFiles] = useState<ImportFile[]>(SEED_FILES);
+  const [files, setFiles] = useState<ImportFile[]>(() => loadFiles());
   const [toast, setToast] = useState<string | null>(null);
 
   const signIn = useCallback((u: User) => {
@@ -157,6 +180,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setToast(m);
     window.setTimeout(() => setToast((cur) => (cur === m ? null : cur)), 1900);
   }, []);
+
+  // Persist files (incl. uploaded files as data URLs) so data survives reload.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(FILES_KEY, JSON.stringify(files));
+    } catch {
+      showToast('Storage full — file too large to keep');
+    }
+  }, [files, showToast]);
+
+  const clearAll = useCallback(() => {
+    setFiles([]);
+    showToast('All data cleared');
+  }, [showToast]);
+
+  const resetDemo = useCallback(() => {
+    setFiles(structuredClone(SEED_FILES));
+    showToast('Demo data restored');
+  }, [showToast]);
 
   const patchFile = useCallback((fileId: number, fn: (f: ImportFile) => ImportFile) => {
     setFiles((prev) => prev.map((f) => (f.id === fileId ? fn(f) : f)));
@@ -372,10 +414,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const createFromTemplate = useCallback(
     (input: CreateFromTemplateInput, tpl: TemplateLike): number => {
-      const id = fileSeq++;
+      const id = nextId(files);
       const file: ImportFile = {
         id,
-        fileNumber: nextFileNumber(),
+        fileNumber: fileNo(id),
         country: tpl.country,
         mode: tpl.mode,
         incoterm: tpl.incoterm,
@@ -416,15 +458,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       showToast('Import file created');
       return id;
     },
-    [showToast],
+    [files, showToast],
   );
 
   const createBlank = useCallback(
     (input: BlankInput): number => {
-      const id = fileSeq++;
+      const id = nextId(files);
       const file: ImportFile = {
         id,
-        fileNumber: nextFileNumber(),
+        fileNumber: fileNo(id),
         country: input.country,
         mode: input.mode,
         incoterm: input.incoterm,
@@ -455,7 +497,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       showToast('Import file created');
       return id;
     },
-    [showToast],
+    [files, showToast],
   );
 
   const value = useMemo<Store>(
@@ -482,6 +524,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reuploadDoc,
       clearDoc,
       deleteFile,
+      clearAll,
+      resetDemo,
       markPaid,
       addPayment,
       toggleChaStep,
@@ -508,6 +552,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reuploadDoc,
       clearDoc,
       deleteFile,
+      clearAll,
+      resetDemo,
       markPaid,
       addPayment,
       toggleChaStep,
