@@ -39,8 +39,9 @@ const USER_KEY = 'import-desk-user';
 function loadUser(): User | null {
   if (typeof window === 'undefined') return null;
   try {
-    const id = window.localStorage.getItem(USER_KEY);
-    return id ? USERS.find((u) => u.id === Number(id)) ?? null : null;
+    const raw = window.localStorage.getItem(USER_KEY);
+    const v = raw ? JSON.parse(raw) : null;
+    return v && typeof v === 'object' && v.name ? (v as User) : null; // ignore legacy id-only values
   } catch {
     return null;
   }
@@ -153,7 +154,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback((u: User) => {
     setUser(u);
     try {
-      window.localStorage.setItem(USER_KEY, String(u.id));
+      window.localStorage.setItem(USER_KEY, JSON.stringify(u));
     } catch {
       /* ignore */
     }
@@ -168,12 +169,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // "View as" role switch — keeps the signed-in person, changes only their role.
   const setRole = useCallback(
     (r: Role) => {
-      const u = USERS.find((x) => x.role === r);
-      if (u) signIn(u);
+      signIn(user ? { ...user, role: r } : USERS.find((x) => x.role === r) ?? USERS[0]);
     },
-    [signIn],
+    [signIn, user],
   );
 
   const showToast = useCallback((m: string) => {

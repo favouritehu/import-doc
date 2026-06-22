@@ -1,53 +1,117 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ArrowRight } from 'lucide-react';
 import { Logo } from '../components/Sidebar';
-import { USERS } from '../data/seed';
+import { cx } from '../lib/cx';
 import { useStore } from '../store/store';
+import type { Role, User } from '../types';
 
-function GoogleG() {
-  return (
-    <span className="grid h-5 w-5 place-items-center rounded bg-white text-[12px] font-extrabold text-blue">
-      G
-    </span>
-  );
-}
+const ROLES: { key: Role; label: string }[] = [
+  { key: 'admin', label: 'Owner' },
+  { key: 'import_manager', label: 'Import Manager' },
+  { key: 'accountant', label: 'Accountant' },
+];
+
+const initialsOf = (name: string): string =>
+  name
+    .trim()
+    .split(/\s+/)
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'U';
+
+const inputCls =
+  'w-full rounded-card border border-border px-3 py-2.5 text-sm text-ink outline-none focus:border-navy placeholder:text-faint';
 
 export function Welcome() {
   const { signIn } = useStore();
   const nav = useNavigate();
-  const admin = USERS.find((u) => u.role === 'admin') ?? USERS[0];
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<Role>('admin');
 
-  const enter = () => {
-    signIn(admin);
+  const valid = name.trim().length > 1 && /\S+@\S+\.\S+/.test(email);
+
+  const submit = () => {
+    if (!valid) return;
+    const u: User = {
+      id: 1000,
+      name: name.trim(),
+      role,
+      initials: initialsOf(name),
+      email: email.trim(),
+    };
+    signIn(u);
     nav('/', { replace: true });
   };
 
   return (
     <div className="min-h-screen bg-navy px-4 py-10 text-white">
       <div className="mx-auto flex min-h-[80vh] w-full max-w-md flex-col justify-center">
-        <div className="mb-8 flex flex-col items-center text-center">
+        <div className="mb-7 flex flex-col items-center text-center">
           <Logo size={56} />
           <h1 className="mt-4 font-display text-2xl font-extrabold">Import Desk</h1>
           <p className="text-sm text-white/60">Favourite Fab · Import Control Tower</p>
-          <p className="mt-3 max-w-xs text-sm text-white/70">
-            Track every India import — documents, payments, customs — in one place. Know what's
-            pending and who's responsible.
-          </p>
         </div>
 
         <div className="rounded-xl2 bg-white p-5 text-ink shadow-modal">
+          <h2 className="font-display text-base font-bold text-ink">Create your account</h2>
+          <p className="mt-0.5 text-xs text-muted">Set up your profile to start tracking imports.</p>
+
+          <div className="mt-4 flex flex-col gap-3">
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold text-muted">Full name</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className={inputCls}
+                placeholder="e.g. Gaurav Garg"
+                autoFocus
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold text-muted">Work email</span>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                className={inputCls}
+                placeholder="you@favouritefab.in"
+                onKeyDown={(e) => e.key === 'Enter' && submit()}
+              />
+            </label>
+            <div>
+              <span className="mb-1 block text-xs font-semibold text-muted">Your role</span>
+              <div className="flex flex-wrap gap-1 rounded-card bg-page p-1">
+                {ROLES.map((r) => (
+                  <button
+                    key={r.key}
+                    onClick={() => setRole(r.key)}
+                    className={cx(
+                      'flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition',
+                      role === r.key ? 'bg-navy text-white' : 'text-muted hover:text-ink',
+                    )}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <button
-            onClick={enter}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-navy py-3 text-sm font-bold text-white transition hover:bg-blue"
+            onClick={submit}
+            disabled={!valid}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-navy py-3 text-sm font-bold text-white transition hover:bg-blue disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <GoogleG /> Continue with Google
+            Get started <ArrowRight size={16} />
           </button>
-          <p className="mt-3 text-center text-[11px] text-muted">
-            Signs you in as Owner. Switch roles anytime from the top bar.
-          </p>
         </div>
 
         <p className="mt-5 text-center text-[11px] text-white/45">
-          Phase A — demo sign-in, no real authentication. Google OAuth wires in Phase B.
+          Phase A — your profile is saved in this browser. Google sign-in &amp; real accounts wire
+          in Phase B.
         </p>
       </div>
     </div>
