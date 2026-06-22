@@ -47,6 +47,17 @@ function loadUser(): User | null {
   }
 }
 
+const USERS_KEY = 'import-desk-users';
+function loadUsers(): User[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(USERS_KEY);
+    return raw ? (JSON.parse(raw) as User[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 const FILES_KEY = 'import-desk-files';
 function loadFiles(): ImportFile[] {
   if (typeof window === 'undefined') return SEED_FILES;
@@ -123,6 +134,9 @@ interface Store {
   deleteFile: (fileId: number) => void;
   clearAll: () => void;
   resetDemo: () => void;
+  users: User[];
+  addUser: (input: { name: string; email: string; role: Role }) => void;
+  removeUser: (id: number) => void;
   markPaid: (fileId: number, idx: number) => void;
   addPayment: (fileId: number, p: { type: PaymentType; amount: number; currency: Currency; due: string }) => void;
   toggleChaStep: (fileId: number, stepKey: string) => void;
@@ -149,6 +163,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => loadUser());
   const role: Role = user?.role ?? 'admin';
   const [files, setFiles] = useState<ImportFile[]>(() => loadFiles());
+  const [users, setUsers] = useState<User[]>(() => loadUsers());
   const [toast, setToast] = useState<string | null>(null);
 
   const signIn = useCallback((u: User) => {
@@ -191,16 +206,66 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [files, showToast]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    } catch {
+      /* ignore */
+    }
+  }, [users]);
+
+  // Keep the signed-in user present in the users list (and their role in sync).
+  useEffect(() => {
+    if (!user) return;
+    setUsers((prev) =>
+      prev.some((x) => x.id === user.id)
+        ? prev.map((x) => (x.id === user.id ? user : x))
+        : [...prev, user],
+    );
+  }, [user]);
+
   const clearAll = useCallback(() => {
     setFiles([]);
+    setUsers([]);
     signOut(); // full reset — also clears the signed-in user
     showToast('All data cleared');
   }, [signOut, showToast]);
 
   const resetDemo = useCallback(() => {
     setFiles(structuredClone(SEED_FILES));
+    setUsers(structuredClone(USERS));
     showToast('Demo data restored');
   }, [showToast]);
+
+  const addUser = useCallback(
+    (input: { name: string; email: string; role: Role }) => {
+      setUsers((prev) => {
+        const id = prev.reduce((m, u) => Math.max(m, u.id), 1000) + 1;
+        const initials =
+          input.name
+            .trim()
+            .split(/\s+/)
+            .map((w) => w[0])
+            .slice(0, 2)
+            .join('')
+            .toUpperCase() || 'U';
+        return [
+          ...prev,
+          { id, name: input.name.trim(), email: input.email.trim(), role: input.role, initials },
+        ];
+      });
+      showToast('User added');
+    },
+    [showToast],
+  );
+
+  const removeUser = useCallback(
+    (id: number) => {
+      setUsers((prev) => prev.filter((u) => u.id !== id));
+      showToast('User removed');
+    },
+    [showToast],
+  );
 
   const patchFile = useCallback((fileId: number, fn: (f: ImportFile) => ImportFile) => {
     setFiles((prev) => prev.map((f) => (f.id === fileId ? fn(f) : f)));
@@ -445,8 +510,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         forwarder: tpl.forwarder,
         boeNumber: null,
         boeDate: null,
-        manager: 'Rahul Mehta',
-        accountant: 'Priya Shah',
+        manager: user?.name ?? 'Unassigned',
+        accountant: user?.name ?? 'Unassigned',
         cha: tpl.cha,
         status: 'draft',
         priority: 'normal',
@@ -460,7 +525,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       showToast('Import file created');
       return id;
     },
-    [files, showToast],
+    [files, user, showToast],
   );
 
   const createBlank = useCallback(
@@ -499,7 +564,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       showToast('Import file created');
       return id;
     },
-    [files, showToast],
+    [files, user, showToast],
   );
 
   const value = useMemo<Store>(
@@ -528,6 +593,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deleteFile,
       clearAll,
       resetDemo,
+      users,
+      addUser,
+      removeUser,
       markPaid,
       addPayment,
       toggleChaStep,
@@ -556,6 +624,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deleteFile,
       clearAll,
       resetDemo,
+      users,
+      addUser,
+      removeUser,
       markPaid,
       addPayment,
       toggleChaStep,

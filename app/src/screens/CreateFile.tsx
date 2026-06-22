@@ -7,8 +7,9 @@ import { TopBar } from '../components/TopBar';
 import { Button } from '../components/Button';
 import { cx } from '../lib/cx';
 import { APPROX_INR_RATE, inr } from '../lib/format';
-import { TEMPLATES, USERS } from '../data/seed';
+import { TEMPLATES } from '../data/seed';
 import { useStore, type BlankInput } from '../store/store';
+import type { User } from '../types';
 import type { InvoiceDraft } from '../lib/checklist';
 
 const CURRENCIES: Currency[] = ['USD', 'EUR', 'CNY', 'INR'];
@@ -54,7 +55,7 @@ const inputCls = 'w-full rounded-card border border-border px-3 py-2.5 text-sm o
 
 export function CreateFile() {
   const nav = useNavigate();
-  const { createFromTemplate, createBlank } = useStore();
+  const { createFromTemplate, createBlank, users } = useStore();
   const [view, setView] = useState<'pick' | 'template' | 'blank'>('pick');
   const [tplId, setTplId] = useState<string | null>(null);
 
@@ -84,6 +85,7 @@ export function CreateFile() {
         )}
         {view === 'blank' && (
           <BlankWizard
+            users={users}
             onBack={() => setView('pick')}
             onCreate={(input) => {
               const id = createBlank(input);
@@ -197,7 +199,15 @@ function Fact({ label, value }: { label: string; value: string }) {
 
 const STEPS = ['Supplier & mode', 'Commercial', 'Shipment & CHA', 'Review'];
 
-function BlankWizard({ onBack, onCreate }: { onBack: () => void; onCreate: (i: BlankInput) => void }) {
+function BlankWizard({
+  users,
+  onBack,
+  onCreate,
+}: {
+  users: User[];
+  onBack: () => void;
+  onCreate: (i: BlankInput) => void;
+}) {
   const [step, setStep] = useState(0);
   const [country, setCountry] = useState('China');
   const [mode, setMode] = useState<Mode>('sea');
@@ -214,8 +224,8 @@ function BlankWizard({ onBack, onCreate }: { onBack: () => void; onCreate: (i: B
     shippingLine: '',
     forwarder: 'OceanLink Logistics',
     cha: 'Speedy Clearing & Forwarding',
-    manager: 'Rahul Mehta',
-    accountant: 'Priya Shah',
+    manager: users[0]?.name ?? '',
+    accountant: users[0]?.name ?? '',
     priority: 'normal' as Priority,
   });
 
@@ -342,7 +352,7 @@ function BlankWizard({ onBack, onCreate }: { onBack: () => void; onCreate: (i: B
             </Field>
             <Field label="Import manager">
               <select value={ship.manager} onChange={(e) => setShip({ ...ship, manager: e.target.value })} className={inputCls}>
-                {USERS.filter((u) => u.role === 'import_manager').map((u) => (
+                {users.map((u) => (
                   <option key={u.id}>{u.name}</option>
                 ))}
               </select>

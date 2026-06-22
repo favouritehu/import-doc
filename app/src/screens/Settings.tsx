@@ -8,14 +8,16 @@ import { Button } from '../components/Button';
 import { Modal } from '../components/Overlay';
 import { cx } from '../lib/cx';
 import { ROLE_LABEL, RolePolicy } from '../lib/rolePolicy';
-import { ITEMS, SUPPLIERS, TEMPLATES, USERS } from '../data/seed';
+import { ITEMS, SUPPLIERS, TEMPLATES } from '../data/seed';
 import { useStore } from '../store/store';
+import type { Role } from '../types';
 
 export function Settings() {
-  const { role, user, showToast, signOut, clearAll, resetDemo } = useStore();
+  const { role, user, users, showToast, signOut, clearAll, resetDemo, addUser, removeUser } = useStore();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const [confirm, setConfirm] = useState<'clear' | 'reset' | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const tab = params.get('tab') ?? 'users';
   const canHsn = RolePolicy.canSeeHsn(role);
   const isAdmin = role === 'admin';
@@ -58,20 +60,50 @@ export function Settings() {
         <div className="mb-4 flex items-center justify-between gap-3">
           <FilterTabs tabs={tabs} active={tab} onChange={(t) => setParams({ tab: t }, { replace: true })} />
           <button
-            onClick={() => showToast('Editing masters is wired in Phase B')}
-            className="hidden rounded-full bg-navy px-3.5 py-2 text-sm font-semibold text-white hover:bg-blue sm:block"
+            onClick={() =>
+              tab === 'users' && isAdmin
+                ? setAddOpen(true)
+                : showToast('Editing masters is wired in Phase B')
+            }
+            className="shrink-0 rounded-full bg-navy px-3.5 py-2 text-sm font-semibold text-white hover:bg-blue"
           >
-            Add
+            {tab === 'users' ? 'Add user' : 'Add'}
           </button>
         </div>
 
         <div className="overflow-x-auto rounded-card border border-border bg-white shadow-card">
           {tab === 'users' && (
-            <Table head={['Name', 'Role', 'Email']}>
-              {USERS.map((u) => (
-                <Row key={u.id} cells={[u.name, ROLE_LABEL[u.role], u.email]} />
-              ))}
-            </Table>
+            <table className="w-full min-w-[420px] text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-faint">
+                  <th className="px-3 py-2.5">Name</th>
+                  <th className="px-3 py-2.5">Role</th>
+                  <th className="px-3 py-2.5">Email</th>
+                  {isAdmin && <th className="px-3 py-2.5" />}
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id} className="border-b border-border last:border-0">
+                    <td className="px-3 py-2.5 font-semibold text-ink">
+                      {u.name}
+                      {user && u.id === user.id ? <span className="ml-1 text-[11px] font-normal text-muted">(you)</span> : ''}
+                    </td>
+                    <td className="px-3 py-2.5 text-medium">{ROLE_LABEL[u.role]}</td>
+                    <td className="px-3 py-2.5 text-medium">{u.email}</td>
+                    {isAdmin && (
+                      <td className="px-3 py-2.5 text-right">
+                        {user && u.id !== user.id && (
+                          <button onClick={() => removeUser(u.id)} aria-label="Remove user" className="text-faint hover:text-red">
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
           {tab === 'suppliers' && (
             <Table head={['Supplier', 'Country', 'Contact']}>
@@ -150,7 +182,79 @@ export function Settings() {
           </p>
         </Modal>
       )}
+      {addOpen && <AddUserModal onClose={() => setAddOpen(false)} onAdd={addUser} />}
     </>
+  );
+}
+
+const ADD_ROLES: { key: Role; label: string }[] = [
+  { key: 'admin', label: 'Owner' },
+  { key: 'import_manager', label: 'Import Manager' },
+  { key: 'accountant', label: 'Accountant' },
+];
+
+function AddUserModal({
+  onClose,
+  onAdd,
+}: {
+  onClose: () => void;
+  onAdd: (i: { name: string; email: string; role: Role }) => void;
+}) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<Role>('import_manager');
+  const valid = name.trim().length > 1 && /\S+@\S+\.\S+/.test(email);
+  const inp = 'w-full rounded-card border border-border px-3 py-2.5 text-sm outline-none focus:border-navy';
+  return (
+    <Modal
+      title="Add user"
+      subtitle="Invite a teammate (Phase A: saved in this browser)"
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!valid}
+            onClick={() => {
+              onAdd({ name, email, role });
+              onClose();
+            }}
+          >
+            Add user
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-3">
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-muted">Full name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} className={inp} placeholder="e.g. Anita Rao" />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-muted">Email</span>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" className={inp} placeholder="anita@favouritefab.in" />
+        </label>
+        <div>
+          <span className="mb-1 block text-xs font-semibold text-muted">Role</span>
+          <div className="flex flex-wrap gap-1 rounded-card bg-page p-1">
+            {ADD_ROLES.map((r) => (
+              <button
+                key={r.key}
+                onClick={() => setRole(r.key)}
+                className={cx(
+                  'flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition',
+                  role === r.key ? 'bg-navy text-white' : 'text-muted hover:text-ink',
+                )}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
