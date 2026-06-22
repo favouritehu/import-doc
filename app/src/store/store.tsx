@@ -192,8 +192,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const clearAll = useCallback(() => {
     setFiles([]);
+    signOut(); // full reset — also clears the signed-in user
     showToast('All data cleared');
-  }, [showToast]);
+  }, [signOut, showToast]);
 
   const resetDemo = useCallback(() => {
     setFiles(structuredClone(SEED_FILES));

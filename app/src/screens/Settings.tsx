@@ -129,8 +129,12 @@ export function Settings() {
               <Button
                 variant={confirm === 'clear' ? 'danger' : 'primary'}
                 onClick={() => {
-                  if (confirm === 'clear') clearAll();
-                  else resetDemo();
+                  if (confirm === 'clear') {
+                    clearAll();
+                    nav('/welcome', { replace: true });
+                  } else {
+                    resetDemo();
+                  }
                   setConfirm(null);
                 }}
               >
@@ -141,7 +145,7 @@ export function Settings() {
         >
           <p className="text-sm text-medium">
             {confirm === 'clear'
-              ? 'Removes every import file, document and upload from this browser. You start with an empty workspace. Cannot be undone.'
+              ? 'Removes every import file, document and upload from this browser and signs you out. You start fresh with an empty workspace. Cannot be undone.'
               : 'Replaces current data with the 7 demo import files. Your current data will be lost.'}
           </p>
         </Modal>
