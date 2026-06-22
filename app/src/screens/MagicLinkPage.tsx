@@ -10,7 +10,7 @@ import { useStore } from '../store/store';
 
 export function MagicLinkPage({ party }: { party: 'forwarder' | 'cha' }) {
   const { fileNumber } = useParams();
-  const { getFileByNumber } = useStore();
+  const { getFileByNumber, ready } = useStore();
   const file = getFileByNumber(fileNumber ?? '');
   const [params, setParams] = useSearchParams();
   const isCha = party === 'cha';
@@ -29,6 +29,16 @@ export function MagicLinkPage({ party }: { party: 'forwarder' | 'cha' }) {
 
   const [uploadedNames, setUploadedNames] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
+
+  if (!ready) {
+    return (
+      <Shell>
+        <div className="anim-pulse rounded-card bg-white p-8 text-center text-sm font-semibold text-muted">
+          Loading…
+        </div>
+      </Shell>
+    );
+  }
 
   if (!file) {
     return (

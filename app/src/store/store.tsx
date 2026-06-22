@@ -30,6 +30,7 @@ import { SEED_FILES, USERS } from '../data/seed';
 import { mkChecklist, mkInvoice, type InvoiceDraft } from '../lib/checklist';
 import { APPROX_INR_RATE } from '../lib/format';
 import { CHA_STEPS } from '../lib/docs';
+import { idbGet, idbSet } from '../lib/idb';
 
 export const TODAY = '18 Jun 2026';
 
@@ -58,16 +59,9 @@ function loadUsers(): User[] {
   }
 }
 
-const FILES_KEY = 'import-desk-files';
-function loadFiles(): ImportFile[] {
-  if (typeof window === 'undefined') return SEED_FILES;
-  try {
-    const raw = window.localStorage.getItem(FILES_KEY);
-    return raw ? (JSON.parse(raw) as ImportFile[]) : SEED_FILES;
-  } catch {
-    return SEED_FILES;
-  }
-}
+// Files (which may carry multi-MB uploaded documents) live in IndexedDB, not the
+// ~5MB localStorage. Key in the idb kv store:
+const FILES_IDB_KEY = 'files';
 
 // Next file id / number derived from current files (persistence-safe — no stale
 // module counter that would collide with reloaded data).
@@ -112,6 +106,7 @@ export interface DocTarget {
 interface Store {
   role: Role;
   user: User | null;
+  ready: boolean;
   files: ImportFile[];
   toast: string | null;
   setRole: (r: Role) => void;
@@ -162,7 +157,8 @@ const StoreCtx = createContext<Store | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => loadUser());
   const role: Role = user?.role ?? 'admin';
-  const [files, setFiles] = useState<ImportFile[]>(() => loadFiles());
+  const [files, setFiles] = useState<ImportFile[]>(SEED_FILES);
+  const [ready, setReady] = useState(false);
   const [users, setUsers] = useState<User[]>(() => loadUsers());
   const [toast, setToast] = useState<string | null>(null);
 
@@ -197,14 +193,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     window.setTimeout(() => setToast((cur) => (cur === m ? null : cur)), 1900);
   }, []);
 
-  // Persist files (incl. uploaded files as data URLs) so data survives reload.
+  // Hydrate files from IndexedDB once on startup (undefined => first run => demo).
   useEffect(() => {
+    let alive = true;
     try {
-      window.localStorage.setItem(FILES_KEY, JSON.stringify(files));
+      window.localStorage.removeItem('import-desk-files'); // retire the old localStorage store
     } catch {
-      showToast('Storage full — file too large to keep');
+      /* ignore */
     }
-  }, [files, showToast]);
+    idbGet<ImportFile[]>(FILES_IDB_KEY)
+      .then((saved) => {
+        if (!alive) return;
+        if (saved) setFiles(saved);
+        setReady(true);
+      })
+      .catch(() => {
+        if (alive) setReady(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Persist files (incl. uploaded files as data URLs) to IndexedDB on change.
+  useEffect(() => {
+    if (!ready) return;
+    idbSet(FILES_IDB_KEY, files).catch(() => showToast('Could not save — storage error'));
+  }, [files, ready, showToast]);
 
   useEffect(() => {
     try {
@@ -571,6 +586,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       role,
       user,
+      ready,
       files,
       toast,
       setRole,
@@ -605,6 +621,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [
       role,
       user,
+      ready,
       files,
       toast,
       signIn,

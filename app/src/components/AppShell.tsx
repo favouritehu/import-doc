@@ -1,11 +1,20 @@
 import { Outlet } from 'react-router-dom';
 import { useIsMobile } from '../lib/useIsMobile';
+import { useStore } from '../store/store';
 import { MobileBottomNav } from './MobileBottomNav';
 import { Sidebar } from './Sidebar';
 import { Toast } from './Toast';
 
 export function AppShell() {
   const isMobile = useIsMobile();
+  const { ready } = useStore();
+  if (!ready) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-page text-muted">
+        <div className="anim-pulse text-sm font-semibold">Loading…</div>
+      </div>
+    );
+  }
   return (
     <div className="flex min-h-screen bg-page text-ink">
       {!isMobile && <Sidebar />}
