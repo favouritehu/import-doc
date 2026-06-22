@@ -1,10 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
 import { Logo } from '../components/Sidebar';
 import { USERS } from '../data/seed';
-import { ROLE_LABEL } from '../lib/rolePolicy';
 import { useStore } from '../store/store';
-import type { User } from '../types';
 
 function GoogleG() {
   return (
@@ -17,15 +14,16 @@ function GoogleG() {
 export function Welcome() {
   const { signIn } = useStore();
   const nav = useNavigate();
-  const enter = (u: User) => {
-    signIn(u);
+  const admin = USERS.find((u) => u.role === 'admin') ?? USERS[0];
+
+  const enter = () => {
+    signIn(admin);
     nav('/', { replace: true });
   };
-  const admin = USERS.find((u) => u.role === 'admin') ?? USERS[0];
 
   return (
     <div className="min-h-screen bg-navy px-4 py-10 text-white">
-      <div className="mx-auto w-full max-w-md">
+      <div className="mx-auto flex min-h-[80vh] w-full max-w-md flex-col justify-center">
         <div className="mb-8 flex flex-col items-center text-center">
           <Logo size={56} />
           <h1 className="mt-4 font-display text-2xl font-extrabold">Import Desk</h1>
@@ -38,34 +36,14 @@ export function Welcome() {
 
         <div className="rounded-xl2 bg-white p-5 text-ink shadow-modal">
           <button
-            onClick={() => enter(admin)}
+            onClick={enter}
             className="flex w-full items-center justify-center gap-2 rounded-full bg-navy py-3 text-sm font-bold text-white transition hover:bg-blue"
           >
             <GoogleG /> Continue with Google
           </button>
-
-          <div className="my-4 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-faint">
-            <span className="h-px flex-1 bg-border" /> or pick a demo user <span className="h-px flex-1 bg-border" />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            {USERS.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => enter(u)}
-                className="flex items-center gap-3 rounded-card border border-border p-3 text-left transition hover:border-navy"
-              >
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-navy text-sm font-bold text-white">
-                  {u.initials}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-ink">{u.name}</div>
-                  <div className="text-xs text-muted">{ROLE_LABEL[u.role]}</div>
-                </div>
-                <ArrowRight size={16} className="text-faint" />
-              </button>
-            ))}
-          </div>
+          <p className="mt-3 text-center text-[11px] text-muted">
+            Signs you in as Owner. Switch roles anytime from the top bar.
+          </p>
         </div>
 
         <p className="mt-5 text-center text-[11px] text-white/45">
