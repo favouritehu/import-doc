@@ -204,7 +204,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     idbGet<ImportFile[]>(FILES_IDB_KEY)
       .then((saved) => {
         if (!alive) return;
-        if (saved) setFiles(saved);
+        setFiles(saved ?? []); // fresh install starts empty (demo via Settings → Reset to demo)
         setReady(true);
       })
       .catch(() => {
