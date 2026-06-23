@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
-import { extract, discrepancy, translate, aiStatus, AiError, type InputFile } from '../services/ai';
+import { extract, extractFromText, discrepancy, translate, aiStatus, AiError, type InputFile } from '../services/ai';
 
 function fail(reply: FastifyReply, e: unknown): FastifyReply {
   if (e instanceof AiError) {
@@ -20,6 +20,17 @@ export const ai: FastifyPluginAsync = async (app) => {
     if (!files.length) return reply.code(400).send({ error: 'no_files' });
     try {
       return await extract(files);
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  // Structure already-OCR'd document text (DeepSeek) -> {file, invoices[]}.
+  app.post('/extract-text', async (req, reply) => {
+    const b = req.body as { text?: string };
+    if (!b?.text?.trim()) return reply.code(400).send({ error: 'no_text' });
+    try {
+      return await extractFromText(b.text);
     } catch (e) {
       return fail(reply, e);
     }

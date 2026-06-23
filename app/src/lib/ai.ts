@@ -87,6 +87,11 @@ export async function aiExtract(files: File[]): Promise<ExtractResult> {
   return post<ExtractResult>('/ai/extract', { files: parts });
 }
 
+/** Structure already-extracted document TEXT (from in-browser OCR) into fields. */
+export async function aiExtractText(text: string): Promise<ExtractResult> {
+  return post<ExtractResult>('/ai/extract-text', { text });
+}
+
 export async function aiDiscrepancy(
   invoice: Record<string, unknown>,
   refText: string,

@@ -213,6 +213,18 @@ export async function extract(files: InputFile[]): Promise<ExtractResult> {
   return coerceExtract(raw);
 }
 
+/** Structure plain document TEXT (from client-side OCR / PDF text layer). Uses
+ *  the text provider (DeepSeek preferred) — no vision/billing needed. */
+export async function extractFromText(text: string): Promise<ExtractResult> {
+  if (!textConfigured()) throw new AiError('ai_not_configured: set DEEPSEEK_API_KEY or GEMINI_API_KEY', 503);
+  const user = `DOCUMENT TEXT (extracted by OCR — may have noise):\n${text}`;
+  const raw =
+    textProvider() === 'deepseek'
+      ? await deepseekJson(EXTRACT_PROMPT, user)
+      : await geminiJson([{ text: `${EXTRACT_PROMPT}\n\n${user}` }]);
+  return coerceExtract(raw);
+}
+
 export interface Mismatch {
   field: string;
   invoiceValue: string;

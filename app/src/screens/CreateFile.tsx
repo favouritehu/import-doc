@@ -11,7 +11,8 @@ import { TEMPLATES } from '../data/seed';
 import { useStore, type BlankInput } from '../store/store';
 import type { User } from '../types';
 import type { InvoiceDraft } from '../lib/checklist';
-import { aiExtract, type ExtractResult } from '../lib/ai';
+import { aiExtractText, type ExtractResult } from '../lib/ai';
+import { extractText } from '../lib/ocr';
 
 const CURRENCIES: Currency[] = ['USD', 'EUR', 'CNY', 'INR'];
 const INCOTERMS: Incoterm[] = ['FOB', 'CIF', 'CFR', 'EXW', 'DAP', 'OTHER'];
@@ -452,6 +453,7 @@ function AiExtractView({
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<ExtractResult | null>(null);
 
@@ -459,11 +461,15 @@ function AiExtractView({
     setBusy(true);
     setError(null);
     try {
-      setForm(await aiExtract(files));
+      const text = await extractText(files, setProgress);
+      if (!text.trim()) throw new Error('No readable text found — try a clearer photo or a digital PDF.');
+      setProgress('Structuring with AI…');
+      setForm(await aiExtractText(text));
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
+      setProgress('');
     }
   };
 
@@ -542,7 +548,7 @@ function AiExtractView({
           <Button disabled={!files.length || busy} onClick={runExtract}>
             {busy ? (
               <>
-                <Loader2 size={15} className="animate-spin" /> Extracting…
+                <Loader2 size={15} className="animate-spin" /> {progress || 'Working…'}
               </>
             ) : (
               <>
