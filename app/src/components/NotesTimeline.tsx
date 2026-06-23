@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Send } from 'lucide-react';
+import { Languages, Send } from 'lucide-react';
 import type { Note } from '../types';
+import { aiTranslate } from '../lib/ai';
 
 function initials(name: string): string {
   return name
@@ -11,13 +12,38 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
+const hasZh = (s: string) => /[一-鿿]/.test(s);
+
 export function NotesTimeline({ notes, onAdd }: { notes: Note[]; onAdd: (m: string) => void }) {
   const [msg, setMsg] = useState('');
+  const [tr, setTr] = useState<Record<number, string>>({});
+  const [busy, setBusy] = useState<number | null>(null);
+
   const submit = () => {
     const m = msg.trim();
     if (!m) return;
     onAdd(m);
     setMsg('');
+  };
+
+  const toggle = async (i: number, text: string) => {
+    if (tr[i]) {
+      setTr((t) => {
+        const next = { ...t };
+        delete next[i];
+        return next;
+      });
+      return;
+    }
+    setBusy(i);
+    try {
+      const out = await aiTranslate(text, hasZh(text) ? 'en' : 'zh');
+      setTr((t) => ({ ...t, [i]: out }));
+    } catch (e) {
+      setTr((t) => ({ ...t, [i]: `⚠ ${(e as Error).message}` }));
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -52,6 +78,14 @@ export function NotesTimeline({ notes, onAdd }: { notes: Note[]; onAdd: (m: stri
                 <span className="ml-auto text-[11px] text-faint">{n.t}</span>
               </div>
               <p className="mt-1 text-sm text-medium">{n.m}</p>
+              <button
+                onClick={() => toggle(i, n.m)}
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-navy hover:underline"
+              >
+                <Languages size={12} />
+                {tr[i] ? 'Show original' : busy === i ? 'Translating…' : 'Translate'}
+              </button>
+              {tr[i] && <p className="mt-1 rounded-card bg-page px-2 py-1.5 text-sm text-ink">{tr[i]}</p>}
             </div>
           </div>
         ))}

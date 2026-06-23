@@ -9,14 +9,17 @@ import { cha } from './routes/cha';
 import { notes } from './routes/notes';
 import { accessLinks } from './routes/access-links';
 import { reports } from './routes/reports';
+import { ai } from './routes/ai';
 
 export async function buildServer(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: true });
+  // 30MB body — base64 of multi-MB invoice PDFs/photos for /ai/extract.
+  const app = Fastify({ logger: true, bodyLimit: 30 * 1024 * 1024 });
 
   await app.register(cors, { origin: process.env.CORS_ORIGIN ?? true });
   app.setErrorHandler(errorHandler);
 
   await app.register(health);
+  await app.register(ai, { prefix: '/ai' });
   await app.register(files, { prefix: '/files' });
   await app.register(documents, { prefix: '/documents' });
   await app.register(payments, { prefix: '/payments' });

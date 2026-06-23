@@ -1,0 +1,103 @@
+// Frontend AI client. Talks to the local api/ (which holds the keys) — the
+// browser never sees an API key. Degrades with a friendly message when the API
+// is down or unconfigured.
+
+import type { Currency } from '../types';
+
+const API = ((import.meta.env.VITE_API_URL as string) || 'http://localhost:8787').replace(/\/$/, '');
+
+export class AiError extends Error {
+  /** false => setup problem (API down / no key); true => upstream/model error. */
+  recoverable: boolean;
+  constructor(message: string, recoverable = true) {
+    super(message);
+    this.recoverable = recoverable;
+  }
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new AiError('Cannot reach the AI service. Start it with `cd api && npm run dev`.', false);
+  }
+  if (res.status === 503) {
+    throw new AiError('AI not configured — set GEMINI_API_KEY in api/.env and restart the API.', false);
+  }
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new AiError(j.message || `AI error (${res.status})`, true);
+  }
+  return res.json() as Promise<T>;
+}
+
+export interface ExtractedInvoice {
+  supplier: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  product: string;
+  qty: string;
+  hsn: string;
+  amount: number;
+  currency: string;
+}
+export interface ExtractResult {
+  file: {
+    country: string;
+    mode: 'sea' | 'air';
+    incoterm: string;
+    blAwb: string;
+    portLoading: string;
+    portArrival: string;
+    eta: string;
+    shippingLine: string;
+    forwarder: string;
+    cha: string;
+  };
+  invoices: ExtractedInvoice[];
+}
+
+export interface Mismatch {
+  field: string;
+  invoiceValue: string;
+  referenceValue: string;
+  reasonZh: string;
+  reasonEn: string;
+}
+
+function fileToPart(file: File): Promise<{ mimeType: string; dataBase64: string }> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = String(r.result);
+      resolve({ mimeType: file.type || 'application/octet-stream', dataBase64: s.slice(s.indexOf(',') + 1) });
+    };
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+}
+
+export async function aiExtract(files: File[]): Promise<ExtractResult> {
+  const parts = await Promise.all(files.map(fileToPart));
+  return post<ExtractResult>('/ai/extract', { files: parts });
+}
+
+export async function aiDiscrepancy(
+  invoice: Record<string, unknown>,
+  refText: string,
+): Promise<{ mismatches: Mismatch[] }> {
+  return post('/ai/discrepancy', { invoice, refText });
+}
+
+export async function aiTranslate(text: string, to: 'en' | 'zh'): Promise<string> {
+  const r = await post<{ text: string }>('/ai/translate', { text, to });
+  return r.text;
+}
+
+export const CURRENCY_SAFE = (c: string): Currency =>
+  (['USD', 'EUR', 'CNY', 'INR'] as const).includes(c as Currency) ? (c as Currency) : 'USD';

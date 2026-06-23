@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import { AlertTriangle, FileText, Trash2, Upload } from 'lucide-react';
+import { AlertTriangle, FileText, Trash2, Upload, Wand2 } from 'lucide-react';
 import type { Doc, ImportFile, Invoice } from '../types';
 import { cx } from '../lib/cx';
 import { CORRECTION_REASONS, docLabel, docStatusMeta } from '../lib/docs';
 import { previewFields } from '../lib/docPreview';
 import { RolePolicy } from '../lib/rolePolicy';
+import { aiDiscrepancy, type Mismatch } from '../lib/ai';
 import { useStore } from '../store/store';
 import { Badge } from './Badge';
 import { Button } from './Button';
@@ -75,6 +76,38 @@ export function FilePreviewModal({
 
   const [flagging, setFlagging] = useState(false);
   const [reason, setReason] = useState(`${CORRECTION_REASONS[0].zh} · ${CORRECTION_REASONS[0].en}`);
+
+  // AI discrepancy check (CI/PL vs pasted PI/PO)
+  const [aiOpen, setAiOpen] = useState(false);
+  const [refText, setRefText] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [mismatches, setMismatches] = useState<Mismatch[] | null>(null);
+  const [aiErr, setAiErr] = useState<string | null>(null);
+  const runCheck = async () => {
+    setChecking(true);
+    setAiErr(null);
+    setMismatches(null);
+    try {
+      const res = await aiDiscrepancy(
+        {
+          supplier: inv?.supplier,
+          invoiceNumber: inv?.invoiceNumber,
+          invoiceDate: inv?.invoiceDate,
+          product: inv?.product,
+          hsn: inv?.hsn,
+          amount: inv?.usd,
+          currency: inv?.currency,
+        },
+        refText,
+      );
+      setMismatches(res.mismatches);
+    } catch (e) {
+      setAiErr((e as Error).message);
+    } finally {
+      setChecking(false);
+    }
+  };
+  const aiCheckable = !!inv && (doc.status === 'uploaded' || doc.status === 'under_review' || doc.status === 'discrepant');
 
   // Read as a data URL (not a blob URL) so the file persists to localStorage and
   // re-renders after reload.
@@ -229,6 +262,57 @@ export function FilePreviewModal({
           ))}
         </dl>
       </div>
+
+      {aiCheckable && (
+        <div className="mt-4 rounded-card border border-border p-3">
+          <button
+            onClick={() => setAiOpen((o) => !o)}
+            className="flex items-center gap-1.5 text-sm font-semibold text-navy"
+          >
+            <Wand2 size={14} /> Check vs Proforma / PO (AI)
+          </button>
+          {aiOpen && (
+            <div className="mt-2 flex flex-col gap-2">
+              <textarea
+                value={refText}
+                onChange={(e) => setRefText(e.target.value)}
+                placeholder="Paste the PI / PO text to compare against this invoice…"
+                className="h-24 w-full rounded-card border border-border p-2 text-sm outline-none focus:border-navy"
+              />
+              <div className="flex justify-end">
+                <Button variant="ghost" disabled={!refText.trim() || checking} onClick={runCheck}>
+                  {checking ? 'Checking…' : 'Check'}
+                </Button>
+              </div>
+              {aiErr && <p className="text-xs text-red">{aiErr}</p>}
+              {mismatches && mismatches.length === 0 && (
+                <p className="text-xs font-semibold text-green">No mismatches found.</p>
+              )}
+              {mismatches?.map((m, i) => (
+                <div key={i} className="rounded-card border border-red/30 bg-red/5 p-2 text-xs">
+                  <div className="font-semibold text-red">
+                    {m.field}: “{m.invoiceValue}” vs “{m.referenceValue}”
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="text-muted">
+                      {m.reasonZh} · {m.reasonEn}
+                    </span>
+                    <button
+                      onClick={() => {
+                        flagDoc(file.id, doc.type, `${m.reasonZh} · ${m.reasonEn}`, target);
+                        onClose();
+                      }}
+                      className="shrink-0 font-semibold text-red hover:underline"
+                    >
+                      Flag
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-4">
         <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">History</h4>

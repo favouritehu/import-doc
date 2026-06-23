@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plane, Plus, Ship, Sparkles, Trash2 } from 'lucide-react';
+import { FileText, Loader2, Plane, Plus, Ship, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import type { Currency, Incoterm, Mode, Priority } from '../types';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
@@ -11,6 +11,7 @@ import { TEMPLATES } from '../data/seed';
 import { useStore, type BlankInput } from '../store/store';
 import type { User } from '../types';
 import type { InvoiceDraft } from '../lib/checklist';
+import { aiExtract, type ExtractResult } from '../lib/ai';
 
 const CURRENCIES: Currency[] = ['USD', 'EUR', 'CNY', 'INR'];
 const INCOTERMS: Incoterm[] = ['FOB', 'CIF', 'CFR', 'EXW', 'DAP', 'OTHER'];
@@ -56,7 +57,7 @@ const inputCls = 'w-full rounded-card border border-border px-3 py-2.5 text-sm o
 export function CreateFile() {
   const nav = useNavigate();
   const { createFromTemplate, createBlank, users } = useStore();
-  const [view, setView] = useState<'pick' | 'template' | 'blank'>('pick');
+  const [view, setView] = useState<'pick' | 'template' | 'blank' | 'ai'>('pick');
   const [tplId, setTplId] = useState<string | null>(null);
 
   return (
@@ -70,6 +71,7 @@ export function CreateFile() {
               setView('template');
             }}
             onBlank={() => setView('blank')}
+            onAi={() => setView('ai')}
           />
         )}
         {view === 'template' && tplId && (
@@ -93,15 +95,50 @@ export function CreateFile() {
             }}
           />
         )}
+        {view === 'ai' && (
+          <AiExtractView
+            users={users}
+            onBack={() => setView('pick')}
+            onCreate={(input) => {
+              const id = createBlank(input);
+              nav(`/files/${id}`);
+            }}
+          />
+        )}
       </Page>
     </>
   );
 }
 
-function PickView({ onTemplate, onBlank }: { onTemplate: (id: string) => void; onBlank: () => void }) {
+function PickView({
+  onTemplate,
+  onBlank,
+  onAi,
+}: {
+  onTemplate: (id: string) => void;
+  onBlank: () => void;
+  onAi: () => void;
+}) {
   return (
     <div>
-      <h2 className="mb-3 font-display text-base font-bold text-ink">Start from a template</h2>
+      <button
+        onClick={onAi}
+        className="anim-pop mb-5 flex w-full items-center gap-3 rounded-card border border-navy/20 bg-navy/5 p-4 text-left transition hover:border-navy"
+      >
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-navy text-white">
+          <Wand2 size={20} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-display text-sm font-bold text-ink">Extract from a document</span>
+            <span className="rounded-full bg-amber px-1.5 py-0.5 text-[10px] font-bold uppercase text-navy">AI</span>
+          </div>
+          <p className="text-xs text-muted">
+            Upload an invoice PDF or photo — AI fills the file + invoices for you to review.
+          </p>
+        </div>
+      </button>
+      <h2 className="mb-3 font-display text-base font-bold text-ink">Or start from a template</h2>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {TEMPLATES.map((t) => {
           const Mode = t.mode === 'air' ? Plane : Ship;
@@ -399,6 +436,232 @@ function BlankWizard({
         ) : (
           <Button onClick={submit}>Create import file</Button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function AiExtractView({
+  users,
+  onBack,
+  onCreate,
+}: {
+  users: User[];
+  onBack: () => void;
+  onCreate: (i: BlankInput) => void;
+}) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState<ExtractResult | null>(null);
+
+  const runExtract = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setForm(await aiExtract(files));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setFileField = (patch: Partial<ExtractResult['file']>) =>
+    setForm((f) => (f ? { ...f, file: { ...f.file, ...patch } } : f));
+  const setInv = (idx: number, patch: Partial<ExtractResult['invoices'][number]>) =>
+    setForm((f) => (f ? { ...f, invoices: f.invoices.map((v, i) => (i === idx ? { ...v, ...patch } : v)) } : f));
+
+  const create = () => {
+    if (!form) return;
+    const f = form.file;
+    onCreate({
+      country: f.country,
+      mode: f.mode,
+      incoterm: (f.incoterm as Incoterm) || 'FOB',
+      blAwb: f.blAwb,
+      portLoading: f.portLoading,
+      portArrival: f.portArrival,
+      eta: f.eta,
+      etaDays: 21,
+      shippingLine: f.shippingLine,
+      forwarder: f.forwarder,
+      cha: f.cha || 'Speedy Clearing & Forwarding',
+      manager: users[0]?.name ?? '',
+      accountant: users[0]?.name ?? '',
+      priority: 'normal',
+      invoices: form.invoices.map((i) => ({
+        supplier: i.supplier,
+        invoiceNumber: i.invoiceNumber,
+        usd: i.amount,
+        currency: (i.currency as Currency) || 'USD',
+        invoiceDate: i.invoiceDate,
+        product: i.product,
+        hsn: i.hsn,
+      })),
+    });
+  };
+
+  // ── Upload step ──
+  if (!form) {
+    return (
+      <div className="mx-auto max-w-xl">
+        <label className="grid cursor-pointer place-items-center gap-2 rounded-card border border-dashed border-divider bg-white py-12 text-center text-muted transition hover:border-navy">
+          <input
+            type="file"
+            multiple
+            accept="application/pdf,image/*"
+            className="hidden"
+            onChange={(e) => setFiles([...(e.target.files ?? [])])}
+          />
+          <FileText size={28} />
+          <p className="text-sm font-semibold text-medium">
+            {files.length ? `${files.length} file${files.length > 1 ? 's' : ''} selected` : 'Choose invoice PDF(s) or photo(s)'}
+          </p>
+          <p className="text-xs">PDF · JPG · PNG — multiple files = multi-invoice</p>
+        </label>
+
+        {files.length > 0 && (
+          <ul className="mt-2 flex flex-col gap-1">
+            {files.map((f, i) => (
+              <li key={i} className="truncate rounded-card border border-border bg-white px-3 py-2 text-xs text-medium">
+                {f.name}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {error && (
+          <div className="mt-3 rounded-card border border-red/30 bg-red/5 p-3 text-sm text-red">{error}</div>
+        )}
+
+        <div className="mt-5 flex justify-between">
+          <Button variant="ghost" onClick={onBack}>
+            Back
+          </Button>
+          <Button disabled={!files.length || busy} onClick={runExtract}>
+            {busy ? (
+              <>
+                <Loader2 size={15} className="animate-spin" /> Extracting…
+              </>
+            ) : (
+              <>
+                <Wand2 size={15} /> Extract with AI
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Review step ──
+  const f = form.file;
+  return (
+    <div className="mx-auto max-w-2xl">
+      <div className="mb-3 flex items-center gap-2 rounded-card border border-green/30 bg-green/5 px-3 py-2 text-sm font-semibold text-green">
+        <Wand2 size={15} /> Extracted — review &amp; edit before creating.
+      </div>
+
+      <div className="rounded-card border border-border bg-white p-4 shadow-card">
+        <h3 className="mb-3 font-display text-sm font-bold text-ink">Shipment</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Origin country">
+            <input value={f.country} onChange={(e) => setFileField({ country: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Mode">
+            <Segmented value={f.mode} options={['sea', 'air'] as const} onChange={(m) => setFileField({ mode: m })} />
+          </Field>
+          <Field label="Incoterm">
+            <Segmented value={(f.incoterm as Incoterm) || 'OTHER'} options={INCOTERMS} onChange={(v) => setFileField({ incoterm: v })} />
+          </Field>
+          <Field label="BL / AWB">
+            <input value={f.blAwb} onChange={(e) => setFileField({ blAwb: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Port of loading">
+            <input value={f.portLoading} onChange={(e) => setFileField({ portLoading: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Port of arrival">
+            <input value={f.portArrival} onChange={(e) => setFileField({ portArrival: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="ETA">
+            <input value={f.eta} onChange={(e) => setFileField({ eta: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Shipping line">
+            <input value={f.shippingLine} onChange={(e) => setFileField({ shippingLine: e.target.value })} className={inputCls} />
+          </Field>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-card border border-border bg-white p-4 shadow-card">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-display text-sm font-bold text-ink">Invoices ({form.invoices.length})</h3>
+          <button
+            onClick={() =>
+              setForm((cur) =>
+                cur
+                  ? { ...cur, invoices: [...cur.invoices, { supplier: '', invoiceNumber: '', invoiceDate: '', product: '', qty: '', hsn: '', amount: 0, currency: 'USD' }] }
+                  : cur,
+              )
+            }
+            className="text-xs font-semibold text-navy hover:underline"
+          >
+            + Add invoice
+          </button>
+        </div>
+        <div className="flex flex-col gap-3">
+          {form.invoices.map((inv, idx) => (
+            <div key={idx} className="rounded-card border border-border p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-bold text-muted">Invoice {idx + 1}</span>
+                {form.invoices.length > 1 && (
+                  <button
+                    onClick={() => setForm((cur) => (cur ? { ...cur, invoices: cur.invoices.filter((_, i) => i !== idx) } : cur))}
+                    className="text-faint hover:text-red"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Supplier">
+                  <input value={inv.supplier} onChange={(e) => setInv(idx, { supplier: e.target.value })} className={inputCls} />
+                </Field>
+                <Field label="Invoice no">
+                  <input value={inv.invoiceNumber} onChange={(e) => setInv(idx, { invoiceNumber: e.target.value })} className={inputCls} />
+                </Field>
+                <Field label="Product">
+                  <input value={inv.product} onChange={(e) => setInv(idx, { product: e.target.value })} className={inputCls} />
+                </Field>
+                <Field label="HSN">
+                  <input value={inv.hsn} onChange={(e) => setInv(idx, { hsn: e.target.value })} className={inputCls} />
+                </Field>
+                <Field label="Amount">
+                  <input
+                    value={inv.amount || ''}
+                    onChange={(e) => setInv(idx, { amount: Number(e.target.value) || 0 })}
+                    inputMode="numeric"
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Currency">
+                  <select value={inv.currency} onChange={(e) => setInv(idx, { currency: e.target.value })} className={inputCls}>
+                    {CURRENCIES.map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-5 flex justify-between">
+        <Button variant="ghost" onClick={() => setForm(null)}>
+          Back
+        </Button>
+        <Button onClick={create}>Create import file</Button>
       </div>
     </div>
   );
