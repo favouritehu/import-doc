@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Loader2, Plane, Plus, Ship, Sparkles, Trash2, Wand2 } from 'lucide-react';
+import { FileText, Loader2, Plane, Plus, Ship, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
 import type { Currency, Incoterm, Mode, Priority } from '../types';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
@@ -57,8 +57,8 @@ const inputCls = 'w-full rounded-card border border-border px-3 py-2.5 text-sm o
 
 export function CreateFile() {
   const nav = useNavigate();
-  const { createFromTemplate, createBlank, users } = useStore();
-  const [view, setView] = useState<'pick' | 'template' | 'blank' | 'ai'>('pick');
+  const { createFromTemplate, createBlank, uploadDoc, users } = useStore();
+  const [view, setView] = useState<'pick' | 'template' | 'blank' | 'ai' | 'quick'>('pick');
   const [tplId, setTplId] = useState<string | null>(null);
 
   return (
@@ -73,6 +73,7 @@ export function CreateFile() {
             }}
             onBlank={() => setView('blank')}
             onAi={() => setView('ai')}
+            onQuick={() => setView('quick')}
           />
         )}
         {view === 'template' && tplId && (
@@ -106,6 +107,15 @@ export function CreateFile() {
             }}
           />
         )}
+        {view === 'quick' && (
+          <QuickStartView
+            users={users}
+            onBack={() => setView('pick')}
+            onCreate={createBlank}
+            onAttachPi={(id, fileName, fileUrl) => uploadDoc(id, 'proforma_invoice', { fileName, fileUrl })}
+            onDone={(id) => nav(`/files/${id}`)}
+          />
+        )}
       </Page>
     </>
   );
@@ -115,10 +125,12 @@ function PickView({
   onTemplate,
   onBlank,
   onAi,
+  onQuick,
 }: {
   onTemplate: (id: string) => void;
   onBlank: () => void;
   onAi: () => void;
+  onQuick: () => void;
 }) {
   return (
     <div>
@@ -136,6 +148,20 @@ function PickView({
           </div>
           <p className="text-xs text-muted">
             Upload an invoice PDF or photo — AI fills the file + invoices for you to review.
+          </p>
+        </div>
+      </button>
+      <button
+        onClick={onQuick}
+        className="anim-pop mb-5 flex w-full items-center gap-3 rounded-card border border-border bg-white p-4 text-left shadow-card transition hover:border-navy"
+      >
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber/15 text-amber">
+          <Zap size={20} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <span className="font-display text-sm font-bold text-ink">Quick order — only have the PI</span>
+          <p className="text-xs text-muted">
+            Create the shipment now with just the supplier. Add BL, ETA, documents &amp; invoice later.
           </p>
         </div>
       </button>
@@ -668,6 +694,117 @@ function AiExtractView({
           Back
         </Button>
         <Button onClick={create}>Create import file</Button>
+      </div>
+    </div>
+  );
+}
+
+function QuickStartView({
+  users,
+  onBack,
+  onCreate,
+  onAttachPi,
+  onDone,
+}: {
+  users: User[];
+  onBack: () => void;
+  onCreate: (i: BlankInput) => number;
+  onAttachPi: (id: number, fileName: string, fileUrl: string) => void;
+  onDone: (id: number) => void;
+}) {
+  const [supplier, setSupplier] = useState('');
+  const [piNo, setPiNo] = useState('');
+  const [product, setProduct] = useState('');
+  const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState<Currency>('USD');
+  const [country, setCountry] = useState('China');
+  const [mode, setMode] = useState<Mode>('sea');
+  const [incoterm, setIncoterm] = useState<Incoterm>('FOB');
+  const [eta, setEta] = useState('');
+  const [pi, setPi] = useState<File | null>(null);
+  const valid = supplier.trim().length > 1;
+
+  const create = () => {
+    if (valid === false) return;
+    const id = onCreate({
+      country,
+      mode,
+      incoterm,
+      blAwb: '',
+      portLoading: '',
+      portArrival: '',
+      eta,
+      etaDays: 30,
+      shippingLine: '',
+      forwarder: '',
+      cha: '',
+      manager: users[0]?.name ?? '',
+      accountant: users[0]?.name ?? '',
+      priority: 'normal',
+      invoices: [
+        { supplier: supplier.trim(), invoiceNumber: piNo.trim(), usd: Number(amount) || 0, currency, product: product.trim() },
+      ],
+    });
+    if (pi) {
+      const r = new FileReader();
+      r.onload = () => {
+        onAttachPi(id, pi.name, typeof r.result === 'string' ? r.result : '');
+        onDone(id);
+      };
+      r.readAsDataURL(pi);
+    } else {
+      onDone(id);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-xl">
+      <p className="mb-3 text-sm text-muted">
+        Just placing the order? Enter what you have — only the supplier is required. Everything else
+        (BL, ETA, ports, commercial invoice, payments) can be added later on the file.
+      </p>
+      <div className="rounded-card border border-border bg-white p-4 shadow-card">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Supplier (required)">
+            <input value={supplier} onChange={(e) => setSupplier(e.target.value)} className={inputCls} placeholder="e.g. Ningbo Foods Co." autoFocus />
+          </Field>
+          <Field label="PI / order no">
+            <input value={piNo} onChange={(e) => setPiNo(e.target.value)} className={inputCls} />
+          </Field>
+          <Field label="Product">
+            <input value={product} onChange={(e) => setProduct(e.target.value)} className={inputCls} />
+          </Field>
+          <Field label="Origin country">
+            <input value={country} onChange={(e) => setCountry(e.target.value)} className={inputCls} />
+          </Field>
+          <Field label={`Order amount (${currency})`}>
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" className={inputCls} />
+          </Field>
+          <Field label="Currency">
+            <Segmented value={currency} options={CURRENCIES} onChange={setCurrency} />
+          </Field>
+          <Field label="Mode">
+            <Segmented value={mode} options={['sea', 'air'] as const} onChange={setMode} />
+          </Field>
+          <Field label="Incoterm">
+            <Segmented value={incoterm} options={INCOTERMS} onChange={setIncoterm} />
+          </Field>
+          <Field label="Expected ETA (optional)">
+            <input value={eta} onChange={(e) => setEta(e.target.value)} className={inputCls} placeholder="e.g. 28 Jul 2026" />
+          </Field>
+        </div>
+        <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-card border border-dashed border-divider px-3 py-2.5 text-sm text-muted transition hover:border-navy">
+          <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => setPi(e.target.files?.[0] ?? null)} />
+          <FileText size={16} /> {pi ? pi.name : 'Attach the PI (optional)'}
+        </label>
+      </div>
+      <div className="mt-5 flex justify-between">
+        <Button variant="ghost" onClick={onBack}>
+          Back
+        </Button>
+        <Button disabled={valid === false} onClick={create}>
+          Create shipment
+        </Button>
       </div>
     </div>
   );
