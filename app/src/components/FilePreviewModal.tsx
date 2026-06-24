@@ -6,6 +6,7 @@ import { CORRECTION_REASONS, docLabel, docStatusMeta } from '../lib/docs';
 import { previewFields } from '../lib/docPreview';
 import { RolePolicy } from '../lib/rolePolicy';
 import { aiDiscrepancy, type Mismatch } from '../lib/ai';
+import { useOpenableUrl } from '../lib/useOpenableUrl';
 import { useStore } from '../store/store';
 import { Badge } from './Badge';
 import { Button } from './Button';
@@ -43,7 +44,6 @@ function UploadLabel({
     >
       <input
         type="file"
-        accept="image/*,application/pdf"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -73,6 +73,9 @@ export function FilePreviewModal({
   const inv: Invoice | undefined = invoiceId ? file.invoices.find((i) => i.id === invoiceId) : undefined;
   const fields = previewFields(doc, file, inv);
   const target = { invoiceId };
+  // Chrome won't open a stored data: URL — convert to a blob URL at view time.
+  const openUrl = useOpenableUrl(doc.fileUrl);
+  const title = doc.label ?? docLabel(doc.type);
 
   const [flagging, setFlagging] = useState(false);
   const [reason, setReason] = useState(`${CORRECTION_REASONS[0].zh} · ${CORRECTION_REASONS[0].en}`);
@@ -207,7 +210,7 @@ export function FilePreviewModal({
 
   return (
     <SlideOver
-      title={docLabel(doc.type)}
+      title={title}
       subtitle={inv ? `${inv.supplier} · ${inv.invoiceNumber}` : file.fileNumber}
       onClose={onClose}
       footer={actions()}
@@ -232,16 +235,18 @@ export function FilePreviewModal({
         <div className="mb-4">
           <div className="mb-1.5 flex items-center justify-between">
             <span className="truncate text-xs font-semibold text-medium">{doc.fileName}</span>
-            <a href={doc.fileUrl} target="_blank" rel="noreferrer" className="text-[11px] font-semibold text-navy hover:underline">
-              Open
-            </a>
+            {openUrl && (
+              <a href={openUrl} target="_blank" rel="noreferrer" className="text-[11px] font-semibold text-navy hover:underline">
+                Open
+              </a>
+            )}
           </div>
           {isImage(doc.fileName) ? (
-            <img src={doc.fileUrl} alt={doc.fileName ?? ''} className="max-h-72 w-full rounded-card border border-border object-contain bg-page" />
+            <img src={openUrl} alt={doc.fileName ?? ''} className="max-h-72 w-full rounded-card border border-border object-contain bg-page" />
           ) : isPdf(doc.fileName) ? (
-            <iframe title={doc.fileName ?? 'pdf'} src={doc.fileUrl} className="h-72 w-full rounded-card border border-border" />
+            <iframe title={doc.fileName ?? 'pdf'} src={openUrl} className="h-72 w-full rounded-card border border-border" />
           ) : (
-            <div className="rounded-card border border-border bg-page p-4 text-sm text-muted">File attached — open to view.</div>
+            <div className="rounded-card border border-border bg-page p-4 text-sm text-muted">File attached — tap Open to view.</div>
           )}
         </div>
       )}

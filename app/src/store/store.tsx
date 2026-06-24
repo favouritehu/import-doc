@@ -29,8 +29,20 @@ import type {
 import { SEED_FILES, USERS } from '../data/seed';
 import { mkChecklist, mkInvoice, type InvoiceDraft } from '../lib/checklist';
 import { APPROX_INR_RATE } from '../lib/format';
-import { CHA_STEPS } from '../lib/docs';
+import { CHA_STEPS, docLabel } from '../lib/docs';
+import { isRequired } from '../lib/derive';
 import { idbGet, idbSet } from '../lib/idb';
+
+// When mode/incoterm change, keep uploads but fix each doc's required flag and
+// swap bill_of_lading <-> awb for the new mode.
+function remapDocs(docs: Doc[], mode: Mode, incoterm: Incoterm): Doc[] {
+  return docs.map((d) => {
+    let type = d.type;
+    if (mode === 'air' && type === 'bill_of_lading') type = 'awb';
+    else if (mode === 'sea' && type === 'awb') type = 'bill_of_lading';
+    return { ...d, type, label: docLabel(type), required: isRequired(type, { mode, incoterm }) };
+  });
+}
 
 export const TODAY = '18 Jun 2026';
 
@@ -103,6 +115,16 @@ export interface DocTarget {
   fileUrl?: string;
 }
 
+// User-driven "add a document" — known slot (file or invoice CI/PL) or a custom
+// doc the user named themselves. Any file type.
+export interface AddDocInput {
+  type: string;
+  label?: string;
+  invoiceId?: string;
+  fileName: string;
+  fileUrl: string;
+}
+
 interface Store {
   role: Role;
   user: User | null;
@@ -121,12 +143,14 @@ interface Store {
   updateInvoice: (fileId: number, invId: string, patch: Partial<Invoice>) => void;
   removeInvoice: (fileId: number, invId: string) => void;
   uploadDoc: (fileId: number, type: string, t?: DocTarget) => void;
+  addDocument: (fileId: number, d: AddDocInput) => void;
   approveDoc: (fileId: number, type: string, t?: DocTarget) => void;
   flagDoc: (fileId: number, type: string, reason: string, t?: DocTarget) => void;
   requestCorrection: (fileId: number, type: string, t?: DocTarget) => void;
   reuploadDoc: (fileId: number, type: string, t?: DocTarget) => void;
   clearDoc: (fileId: number, type: string, invoiceId?: string) => void;
   deleteFile: (fileId: number) => void;
+  updateFile: (fileId: number, patch: Partial<ImportFile>) => void;
   clearAll: () => void;
   resetDemo: () => void;
   users: User[];
@@ -332,6 +356,56 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [setDoc, showToast],
   );
 
+  // User picks a file + (optionally) names/types it. Fills a known slot when the
+  // type already exists (file doc or invoice CI/PL); otherwise appends a fresh
+  // custom doc. Lets users add only what they have — no full predefined checklist.
+  const addDocument = useCallback(
+    (fileId: number, d: AddDocInput) => {
+      const by = user?.name ?? userName(role);
+      const fill = (doc: Doc): Doc => ({
+        ...doc,
+        status: 'uploaded',
+        by,
+        at: TODAY,
+        reason: null,
+        fileName: d.fileName,
+        fileUrl: d.fileUrl,
+        label: d.label ?? doc.label,
+      });
+      patchFile(fileId, (f) => {
+        if (d.invoiceId) {
+          return {
+            ...f,
+            invoices: f.invoices.map((inv) => {
+              if (inv.id !== d.invoiceId) return inv;
+              if (inv.ci.type === d.type) return { ...inv, ci: fill(inv.ci) };
+              if (inv.pl.type === d.type) return { ...inv, pl: fill(inv.pl) };
+              return inv;
+            }),
+          };
+        }
+        if (f.docs.some((x) => x.type === d.type)) {
+          return { ...f, docs: f.docs.map((x) => (x.type === d.type ? fill(x) : x)) };
+        }
+        const fresh: Doc = {
+          type: d.type,
+          label: d.label ?? d.type,
+          status: 'uploaded',
+          required: false,
+          by,
+          at: TODAY,
+          reason: null,
+          version: 1,
+          fileName: d.fileName,
+          fileUrl: d.fileUrl,
+        };
+        return { ...f, docs: [...f.docs, fresh] };
+      });
+      showToast(`Added ${d.fileName}`);
+    },
+    [patchFile, role, user, showToast],
+  );
+
   const approveDoc = useCallback(
     (fileId: number, type: string, t?: DocTarget) => {
       setDoc(fileId, type, 'approved', t, { reason: null });
@@ -400,6 +474,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       showToast('Import file deleted');
     },
     [showToast],
+  );
+
+  const updateFile = useCallback(
+    (fileId: number, patch: Partial<ImportFile>) => {
+      patchFile(fileId, (f) => {
+        const next = { ...f, ...patch };
+        if (patch.mode !== undefined || patch.incoterm !== undefined) {
+          next.docs = remapDocs(next.docs, next.mode, next.incoterm);
+        }
+        return next;
+      });
+      showToast('Details updated');
+    },
+    [patchFile, showToast],
   );
 
   const markPaid = useCallback(
@@ -601,12 +689,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateInvoice,
       removeInvoice,
       uploadDoc,
+      addDocument,
       approveDoc,
       flagDoc,
       requestCorrection,
       reuploadDoc,
       clearDoc,
       deleteFile,
+      updateFile,
       clearAll,
       resetDemo,
       users,
@@ -633,12 +723,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateInvoice,
       removeInvoice,
       uploadDoc,
+      addDocument,
       approveDoc,
       flagDoc,
       requestCorrection,
       reuploadDoc,
       clearDoc,
       deleteFile,
+      updateFile,
       clearAll,
       resetDemo,
       users,

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Link2, Lock, Trash2, Upload } from 'lucide-react';
-import type { Currency, PaymentType } from '../types';
+import { FileUp, Link2, Lock, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import type { Currency, Doc, ImportFile, Incoterm, Invoice, Mode, PaymentType, Priority, User } from '../types';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
 import { Button } from '../components/Button';
@@ -18,10 +18,10 @@ import { MagicLinkPanel } from '../components/MagicLinkPanel';
 import { Modal } from '../components/Overlay';
 import { cx } from '../lib/cx';
 import { derivePriority, deriveStatus, relevantPayments, requiredMissingDocs, responsibleOf } from '../lib/derive';
-import { fileValueInr, inr, invoiceInr, supplierLabel } from '../lib/format';
-import { PAYMENT_LABELS } from '../lib/docs';
+import { APPROX_INR_RATE, fileValueInr, inr, invoiceInr, supplierLabel } from '../lib/format';
+import { COMMON_FILE_DOCS, CUSTOMS_DOCS, PAYMENT_LABELS, docLabel } from '../lib/docs';
 import { RolePolicy } from '../lib/rolePolicy';
-import { useStore } from '../store/store';
+import { useStore, type AddDocInput } from '../store/store';
 
 export function FileDetail() {
   const { id } = useParams();
@@ -35,6 +35,9 @@ export function FileDetail() {
   const [addPay, setAddPay] = useState(false);
   const [addInv, setAddInv] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [editFile, setEditFile] = useState(false);
+  const [editInv, setEditInv] = useState<Invoice | null>(null);
+  const [addDoc, setAddDoc] = useState(false);
 
   if (!file) {
     return (
@@ -75,16 +78,19 @@ export function FileDetail() {
     return file.docs.find((d) => d.type === slide.type) ?? null;
   })();
 
+  // Show only documents the user has actually added — never the empty checklist.
+  const added = (ds: Doc[]) => ds.filter((d) => d.status !== 'missing');
   const docGroups: DocGroup[] = [
     ...file.invoices.map((inv, i) => ({
       key: inv.id,
       title: `Invoice ${i + 1} · ${inv.supplier}`,
       subtitle: inv.invoiceNumber,
       invoiceId: inv.id,
-      docs: [inv.ci, inv.pl],
+      docs: added([inv.ci, inv.pl]),
     })),
-    { key: 'shared', title: 'Shared documents', subtitle: 'One clearance', docs: file.docs },
-  ];
+    { key: 'shared', title: 'Shared documents', subtitle: 'One clearance', docs: added(file.docs) },
+  ].filter((g) => g.docs.length > 0);
+  const reqMissingCount = requiredMissingDocs(file).length;
 
   return (
     <>
@@ -128,6 +134,9 @@ export function FileDetail() {
             <Button variant="ghost" onClick={() => setTab('documents')}>
               <Upload size={15} /> Documents
             </Button>
+            <Button variant="ghost" onClick={() => setEditFile(true)}>
+              <Pencil size={15} /> Edit details
+            </Button>
             {canClose && status !== 'closed' && (
               <Button variant="ghost" onClick={() => store.markClosed(file.id)}>
                 Mark closed
@@ -165,12 +174,38 @@ export function FileDetail() {
             canDelete={canDelete}
             onAddInvoice={() => setAddInv(true)}
             onRemoveInvoice={(invId) => store.removeInvoice(file.id, invId)}
+            onEditInvoice={(inv) => setEditInv(inv)}
+            onEditFile={() => setEditFile(true)}
             onGoDocs={() => setTab('documents')}
           />
         )}
 
         {tab === 'documents' && (
-          <DocumentChecklist groups={docGroups} onRow={(d, invoiceId) => setSlide({ type: d.type, invoiceId })} />
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-display text-sm font-bold text-ink">Documents</h3>
+              <Button onClick={() => setAddDoc(true)}>
+                <Plus size={15} /> Add document
+              </Button>
+            </div>
+            {docGroups.length > 0 ? (
+              <DocumentChecklist groups={docGroups} onRow={(d, invoiceId) => setSlide({ type: d.type, invoiceId })} />
+            ) : (
+              <div className="grid place-items-center gap-2 rounded-card border border-dashed border-divider bg-page py-12 text-center">
+                <FileUp size={26} className="text-faint" />
+                <p className="text-sm font-semibold text-medium">No documents yet</p>
+                <p className="max-w-xs text-xs text-muted">
+                  Add any document you have — invoice, packing list, BL, a photo or PDF. Tap “Add document”.
+                </p>
+              </div>
+            )}
+            {reqMissingCount > 0 && (
+              <p className="text-[11px] text-muted">
+                {reqMissingCount} required {reqMissingCount === 1 ? 'document is' : 'documents are'} still missing — status
+                stays “Docs Pending” until they’re added.
+              </p>
+            )}
+          </div>
         )}
 
         {tab === 'payments' && canFin && (
@@ -202,6 +237,28 @@ export function FileDetail() {
       {linkOpen && <MagicLinkPanel file={file} onClose={() => setLinkOpen(false)} />}
       {addPay && <AddPaymentModal onClose={() => setAddPay(false)} onAdd={(p) => store.addPayment(file.id, p)} />}
       {addInv && <AddInvoiceModal onClose={() => setAddInv(false)} onAdd={(d) => store.addInvoice(file.id, d)} />}
+      {addDoc && (
+        <AddDocumentModal
+          file={file}
+          onClose={() => setAddDoc(false)}
+          onAdd={(d) => store.addDocument(file.id, d)}
+        />
+      )}
+      {editFile && (
+        <EditFileModal
+          file={file}
+          users={store.users}
+          onClose={() => setEditFile(false)}
+          onSave={(patch) => store.updateFile(file.id, patch)}
+        />
+      )}
+      {editInv && (
+        <EditInvoiceModal
+          inv={editInv}
+          onClose={() => setEditInv(null)}
+          onSave={(patch) => store.updateInvoice(file.id, editInv.id, patch)}
+        />
+      )}
       {confirmDel && (
         <Modal
           title="Delete import file?"
@@ -241,6 +298,8 @@ function SummaryTab({
   canDelete,
   onAddInvoice,
   onRemoveInvoice,
+  onEditInvoice,
+  onEditFile,
   onGoDocs,
 }: {
   file: ReturnType<typeof useStore>['files'][number];
@@ -249,6 +308,8 @@ function SummaryTab({
   canDelete: boolean;
   onAddInvoice: () => void;
   onRemoveInvoice: (invId: string) => void;
+  onEditInvoice: (inv: Invoice) => void;
+  onEditFile: () => void;
   onGoDocs: () => void;
 }) {
   const facts: [string, string][] = [
@@ -267,7 +328,12 @@ function SummaryTab({
     <div className="grid gap-4 lg:grid-cols-3">
       <div className="lg:col-span-2">
         <div className="rounded-card border border-border bg-white p-4 shadow-card">
-          <h3 className="mb-3 font-display text-sm font-bold text-ink">Shipment</h3>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-display text-sm font-bold text-ink">Shipment</h3>
+            <button onClick={onEditFile} className="inline-flex items-center gap-1 text-xs font-semibold text-navy hover:underline">
+              <Pencil size={12} /> Edit
+            </button>
+          </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
             {facts.map(([l, v]) => (
               <div key={l}>
@@ -297,6 +363,9 @@ function SummaryTab({
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {canFin && <span className="text-sm font-bold text-ink">{inr(invoiceInr(inv))}</span>}
+                  <button onClick={() => onEditInvoice(inv)} aria-label="Edit invoice" className="text-faint hover:text-navy">
+                    <Pencil size={14} />
+                  </button>
                   {canDelete && file.invoices.length > 1 && (
                     <button
                       onClick={() => onRemoveInvoice(inv.id)}
@@ -480,6 +549,318 @@ function AddInvoiceModal({
             </select>
           </label>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+function L({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-semibold text-muted">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function EditFileModal({
+  file,
+  users,
+  onClose,
+  onSave,
+}: {
+  file: ImportFile;
+  users: User[];
+  onClose: () => void;
+  onSave: (patch: Partial<ImportFile>) => void;
+}) {
+  const [f, setF] = useState({
+    country: file.country,
+    mode: file.mode,
+    incoterm: file.incoterm,
+    blAwb: file.blAwb,
+    portLoading: file.portLoading,
+    portArrival: file.portArrival,
+    eta: file.eta,
+    shippingLine: file.shippingLine,
+    forwarder: file.forwarder,
+    cha: file.cha,
+    manager: file.manager,
+    accountant: file.accountant,
+    priority: file.priority,
+    boeNumber: file.boeNumber ?? '',
+  });
+  const set = (patch: Partial<typeof f>) => setF((s) => ({ ...s, ...patch }));
+  const userOpts = (current: string) => (
+    <>
+      {users.some((u) => u.name === current) ? null : current ? <option>{current}</option> : null}
+      {users.map((u) => (
+        <option key={u.id}>{u.name}</option>
+      ))}
+    </>
+  );
+  return (
+    <Modal
+      title="Edit details"
+      subtitle={file.fileNumber}
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              onSave({ ...f, boeNumber: f.boeNumber.trim() || null });
+              onClose();
+            }}
+          >
+            Save changes
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <L label="Origin country">
+          <input value={f.country} onChange={(e) => set({ country: e.target.value })} className={inputCls} />
+        </L>
+        <L label="Mode">
+          <select value={f.mode} onChange={(e) => set({ mode: e.target.value as Mode })} className={inputCls}>
+            <option value="sea">sea</option>
+            <option value="air">air</option>
+          </select>
+        </L>
+        <L label="Incoterm">
+          <select value={f.incoterm} onChange={(e) => set({ incoterm: e.target.value as Incoterm })} className={inputCls}>
+            {(['FOB', 'CIF', 'CFR', 'EXW', 'DAP', 'OTHER'] as const).map((x) => (
+              <option key={x}>{x}</option>
+            ))}
+          </select>
+        </L>
+        <L label="BL / AWB">
+          <input value={f.blAwb} onChange={(e) => set({ blAwb: e.target.value })} className={inputCls} />
+        </L>
+        <L label="Port of loading">
+          <input value={f.portLoading} onChange={(e) => set({ portLoading: e.target.value })} className={inputCls} />
+        </L>
+        <L label="Port of arrival">
+          <input value={f.portArrival} onChange={(e) => set({ portArrival: e.target.value })} className={inputCls} />
+        </L>
+        <L label="ETA">
+          <input value={f.eta} onChange={(e) => set({ eta: e.target.value })} className={inputCls} placeholder="e.g. 28 Jul 2026" />
+        </L>
+        <L label="Shipping line">
+          <input value={f.shippingLine} onChange={(e) => set({ shippingLine: e.target.value })} className={inputCls} />
+        </L>
+        <L label="Forwarder">
+          <input value={f.forwarder} onChange={(e) => set({ forwarder: e.target.value })} className={inputCls} />
+        </L>
+        <L label="CHA">
+          <input value={f.cha} onChange={(e) => set({ cha: e.target.value })} className={inputCls} />
+        </L>
+        <L label="BOE no">
+          <input value={f.boeNumber} onChange={(e) => set({ boeNumber: e.target.value })} className={inputCls} />
+        </L>
+        <L label="Priority">
+          <select value={f.priority} onChange={(e) => set({ priority: e.target.value as Priority })} className={inputCls}>
+            {(['normal', 'high', 'urgent'] as const).map((x) => (
+              <option key={x}>{x}</option>
+            ))}
+          </select>
+        </L>
+        <L label="Import manager">
+          <select value={f.manager} onChange={(e) => set({ manager: e.target.value })} className={inputCls}>
+            {userOpts(f.manager)}
+          </select>
+        </L>
+        <L label="Accountant">
+          <select value={f.accountant} onChange={(e) => set({ accountant: e.target.value })} className={inputCls}>
+            {userOpts(f.accountant)}
+          </select>
+        </L>
+      </div>
+    </Modal>
+  );
+}
+
+function EditInvoiceModal({
+  inv,
+  onClose,
+  onSave,
+}: {
+  inv: Invoice;
+  onClose: () => void;
+  onSave: (patch: Partial<Invoice>) => void;
+}) {
+  const [v, setV] = useState({
+    supplier: inv.supplier,
+    invoiceNumber: inv.invoiceNumber,
+    invoiceDate: inv.invoiceDate,
+    product: inv.product,
+    qty: inv.qty,
+    hsn: inv.hsn ?? '',
+    amount: String(inv.usd || ''),
+    currency: inv.currency,
+  });
+  const set = (patch: Partial<typeof v>) => setV((s) => ({ ...s, ...patch }));
+  const valid = v.supplier.trim().length > 0;
+  return (
+    <Modal
+      title="Edit invoice"
+      subtitle={inv.invoiceNumber || inv.supplier}
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            disabled={valid === false}
+            onClick={() => {
+              onSave({
+                supplier: v.supplier.trim(),
+                invoiceNumber: v.invoiceNumber.trim(),
+                invoiceDate: v.invoiceDate,
+                product: v.product,
+                qty: v.qty,
+                hsn: v.hsn.trim() || undefined,
+                usd: Number(v.amount) || 0,
+                currency: v.currency,
+                rate: APPROX_INR_RATE[v.currency],
+              });
+              onClose();
+            }}
+          >
+            Save changes
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <L label="Supplier">
+          <input value={v.supplier} onChange={(e) => set({ supplier: e.target.value })} className={inputCls} />
+        </L>
+        <L label="Invoice no">
+          <input value={v.invoiceNumber} onChange={(e) => set({ invoiceNumber: e.target.value })} className={inputCls} />
+        </L>
+        <L label="Invoice date">
+          <input value={v.invoiceDate} onChange={(e) => set({ invoiceDate: e.target.value })} className={inputCls} />
+        </L>
+        <L label="Product">
+          <input value={v.product} onChange={(e) => set({ product: e.target.value })} className={inputCls} />
+        </L>
+        <L label="Quantity">
+          <input value={v.qty} onChange={(e) => set({ qty: e.target.value })} className={inputCls} />
+        </L>
+        <L label="HSN">
+          <input value={v.hsn} onChange={(e) => set({ hsn: e.target.value })} className={inputCls} />
+        </L>
+        <L label="Amount">
+          <input value={v.amount} onChange={(e) => set({ amount: e.target.value })} inputMode="numeric" className={inputCls} />
+        </L>
+        <L label="Currency">
+          <select value={v.currency} onChange={(e) => set({ currency: e.target.value as Currency })} className={inputCls}>
+            {(['USD', 'EUR', 'CNY', 'INR'] as const).map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </L>
+      </div>
+    </Modal>
+  );
+}
+
+// File-first: pick any file → name auto-fills → type is an optional tag. No long
+// checklist to wade through — the user adds exactly what they have.
+function AddDocumentModal({
+  file,
+  onClose,
+  onAdd,
+}: {
+  file: ImportFile;
+  onClose: () => void;
+  onAdd: (d: AddDocInput) => void;
+}) {
+  const [picked, setPicked] = useState<File | null>(null);
+  const [name, setName] = useState('');
+  const [typeValue, setTypeValue] = useState('other');
+
+  const onPick = (f: File) => {
+    setPicked(f);
+    if (!name.trim()) setName(f.name.replace(/\.[^.]+$/, ''));
+  };
+
+  const typeOptions: { value: string; label: string }[] = [
+    { value: 'other', label: 'Other / custom' },
+    ...file.invoices.flatMap((inv) => [
+      { value: `inv:${inv.id}:commercial_invoice`, label: `Commercial Invoice — ${inv.supplier}` },
+      { value: `inv:${inv.id}:packing_list`, label: `Packing List — ${inv.supplier}` },
+    ]),
+    ...[...COMMON_FILE_DOCS, ...CUSTOMS_DOCS].map((t) => ({ value: `file:${t}`, label: docLabel(t) })),
+  ];
+
+  const submit = () => {
+    if (!picked || !name.trim()) return;
+    const r = new FileReader();
+    r.onload = () => {
+      const fileUrl = typeof r.result === 'string' ? r.result : '';
+      const fileName = picked.name;
+      if (typeValue === 'other') {
+        onAdd({ type: `custom-${Date.now()}`, label: name.trim(), fileName, fileUrl });
+      } else if (typeValue.startsWith('inv:')) {
+        const [, invoiceId, type] = typeValue.split(':');
+        onAdd({ type, invoiceId, fileName, fileUrl });
+      } else {
+        onAdd({ type: typeValue.slice(5), fileName, fileUrl });
+      }
+      onClose();
+    };
+    r.readAsDataURL(picked);
+  };
+
+  return (
+    <Modal
+      title="Add document"
+      subtitle="Any file — PDF, photo, scan"
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button disabled={!picked || !name.trim()} onClick={submit}>
+            Add document
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-3">
+        <label className="grid cursor-pointer place-items-center gap-2 rounded-card border border-dashed border-divider bg-page py-8 text-center text-muted hover:border-navy">
+          <input
+            type="file"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) onPick(f);
+            }}
+          />
+          {picked ? <FileUp size={26} className="text-navy" /> : <Upload size={26} />}
+          <span className="text-sm font-semibold text-medium">{picked ? picked.name : 'Choose a file'}</span>
+          <span className="text-xs">Any type · image, PDF or document</span>
+        </label>
+        <L label="Name">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bank NOC" className={inputCls} />
+        </L>
+        <L label="Type (optional)">
+          <select value={typeValue} onChange={(e) => setTypeValue(e.target.value)} className={inputCls}>
+            {typeOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </L>
       </div>
     </Modal>
   );

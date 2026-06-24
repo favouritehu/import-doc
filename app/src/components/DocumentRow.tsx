@@ -5,6 +5,8 @@ import { Badge } from './Badge';
 
 export function DocumentRow({ doc, onClick }: { doc: Doc; onClick: () => void }) {
   const meta = DOC_META[doc.type];
+  const label = doc.label ?? docLabel(doc.type);
+  const abbr = meta ? docAbbr(doc.type) : label.slice(0, 2).toUpperCase();
   const flagged = doc.status === 'missing' || doc.status === 'discrepant';
   return (
     <button
@@ -16,13 +18,13 @@ export function DocumentRow({ doc, onClick }: { doc: Doc; onClick: () => void })
     >
       <span
         className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[11px] font-bold"
-        style={{ background: meta?.tint, color: meta?.fg }}
+        style={{ background: meta?.tint ?? '#EEF2F7', color: meta?.fg ?? '#475569' }}
       >
-        {docAbbr(doc.type)}
+        {abbr}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-semibold text-ink">{docLabel(doc.type)}</span>
+          <span className="truncate text-sm font-semibold text-ink">{label}</span>
           {doc.required && doc.status === 'missing' && (
             <span className="rounded bg-red/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red">
               required
