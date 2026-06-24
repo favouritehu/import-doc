@@ -42,9 +42,20 @@ export interface ExtractedInvoice {
   invoiceDate: string;
   product: string;
   qty: string;
+  weight: string;
   hsn: string;
   amount: number;
   currency: string;
+}
+
+export interface ClassifyResult {
+  docType: string;
+  title: string;
+  supplier: string;
+  invoiceNumber: string;
+  product: string;
+  weight: string;
+  confidence: number;
 }
 export interface ExtractResult {
   file: {
@@ -85,6 +96,12 @@ function fileToPart(file: File): Promise<{ mimeType: string; dataBase64: string 
 export async function aiExtract(files: File[]): Promise<ExtractResult> {
   const parts = await Promise.all(files.map(fileToPart));
   return post<ExtractResult>('/ai/extract', { files: parts });
+}
+
+/** Vision-classify ONE uploaded document into a known doc type + slot hints. */
+export async function aiClassify(file: File): Promise<ClassifyResult> {
+  const part = await fileToPart(file);
+  return post<ClassifyResult>('/ai/classify', { file: part });
 }
 
 /** Structure already-extracted document TEXT (from in-browser OCR) into fields. */

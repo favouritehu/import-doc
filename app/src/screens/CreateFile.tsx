@@ -537,6 +537,7 @@ function AiExtractView({
         currency: (i.currency as Currency) || 'USD',
         invoiceDate: i.invoiceDate,
         product: i.product,
+        weight: i.weight,
         hsn: i.hsn,
       })),
     });
@@ -640,7 +641,7 @@ function AiExtractView({
             onClick={() =>
               setForm((cur) =>
                 cur
-                  ? { ...cur, invoices: [...cur.invoices, { supplier: '', invoiceNumber: '', invoiceDate: '', product: '', qty: '', hsn: '', amount: 0, currency: 'USD' }] }
+                  ? { ...cur, invoices: [...cur.invoices, { supplier: '', invoiceNumber: '', invoiceDate: '', product: '', qty: '', weight: '', hsn: '', amount: 0, currency: 'USD' }] }
                   : cur,
               )
             }

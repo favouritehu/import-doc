@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { FileUp, Link2, Lock, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { FileUp, Link2, Loader2, Lock, Pencil, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
 import type { Currency, Doc, ImportFile, Incoterm, Invoice, Mode, PaymentType, Priority, User } from '../types';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
@@ -20,6 +20,7 @@ import { cx } from '../lib/cx';
 import { derivePriority, deriveStatus, relevantPayments, requiredMissingDocs, responsibleOf } from '../lib/derive';
 import { APPROX_INR_RATE, fileValueInr, inr, invoiceInr, supplierLabel } from '../lib/format';
 import { COMMON_FILE_DOCS, CUSTOMS_DOCS, PAYMENT_LABELS, docLabel } from '../lib/docs';
+import { aiClassify, AiError, type ClassifyResult } from '../lib/ai';
 import { RolePolicy } from '../lib/rolePolicy';
 import { useStore, type AddDocInput } from '../store/store';
 
@@ -491,11 +492,19 @@ function AddInvoiceModal({
   onAdd,
 }: {
   onClose: () => void;
-  onAdd: (d: { supplier: string; invoiceNumber: string; usd: number; currency: Currency; product: string }) => void;
+  onAdd: (d: {
+    supplier: string;
+    invoiceNumber: string;
+    usd: number;
+    currency: Currency;
+    product: string;
+    weight: string;
+  }) => void;
 }) {
   const [supplier, setSupplier] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [product, setProduct] = useState('');
+  const [weight, setWeight] = useState('');
   const [usd, setUsd] = useState('');
   const [currency, setCurrency] = useState<Currency>('USD');
   const valid = supplier.trim() && invoiceNumber.trim() && Number(usd) > 0;
@@ -513,7 +522,7 @@ function AddInvoiceModal({
           <Button
             disabled={!valid}
             onClick={() => {
-              onAdd({ supplier, invoiceNumber, usd: Number(usd), currency, product });
+              onAdd({ supplier, invoiceNumber, usd: Number(usd), currency, product, weight });
               onClose();
             }}
           >
@@ -534,6 +543,15 @@ function AddInvoiceModal({
         <label className="block">
           <span className="mb-1 block text-xs font-semibold text-muted">Product</span>
           <input value={product} onChange={(e) => setProduct(e.target.value)} className={inputCls} />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-muted">Weight (optional)</span>
+          <input
+            value={weight}
+            onChange={(e) => setWeight(e.target.value)}
+            placeholder="e.g. 1,250 kg"
+            className={inputCls}
+          />
         </label>
         <div className="grid grid-cols-3 gap-2">
           <label className="col-span-2 block">
@@ -698,6 +716,7 @@ function EditInvoiceModal({
     invoiceDate: inv.invoiceDate,
     product: inv.product,
     qty: inv.qty,
+    weight: inv.weight ?? '',
     hsn: inv.hsn ?? '',
     amount: String(inv.usd || ''),
     currency: inv.currency,
@@ -723,6 +742,7 @@ function EditInvoiceModal({
                 invoiceDate: v.invoiceDate,
                 product: v.product,
                 qty: v.qty,
+                weight: v.weight.trim() || undefined,
                 hsn: v.hsn.trim() || undefined,
                 usd: Number(v.amount) || 0,
                 currency: v.currency,
@@ -752,6 +772,9 @@ function EditInvoiceModal({
         <L label="Quantity">
           <input value={v.qty} onChange={(e) => set({ qty: e.target.value })} className={inputCls} />
         </L>
+        <L label="Weight">
+          <input value={v.weight} onChange={(e) => set({ weight: e.target.value })} placeholder="e.g. 1,250 kg" className={inputCls} />
+        </L>
         <L label="HSN">
           <input value={v.hsn} onChange={(e) => set({ hsn: e.target.value })} className={inputCls} />
         </L>
@@ -772,6 +795,28 @@ function EditInvoiceModal({
 
 // File-first: pick any file → name auto-fills → type is an optional tag. No long
 // checklist to wade through — the user adds exactly what they have.
+/** Match an AI-classified CI/PL to one of the file's invoices (by number, then supplier). */
+function matchInvoice(invoices: Invoice[], c: ClassifyResult): Invoice | null {
+  const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const cn = norm(c.invoiceNumber);
+  if (cn) {
+    const byNum = invoices.find((i) => {
+      const n = norm(i.invoiceNumber);
+      return n && (n === cn || n.includes(cn) || cn.includes(n));
+    });
+    if (byNum) return byNum;
+  }
+  const cs = norm(c.supplier);
+  if (cs) {
+    const bySup = invoices.find((i) => {
+      const s = norm(i.supplier);
+      return s && (s.includes(cs) || cs.includes(s));
+    });
+    if (bySup) return bySup;
+  }
+  return invoices.length === 1 ? invoices[0] : null;
+}
+
 function AddDocumentModal({
   file,
   onClose,
@@ -784,20 +829,67 @@ function AddDocumentModal({
   const [picked, setPicked] = useState<File | null>(null);
   const [name, setName] = useState('');
   const [typeValue, setTypeValue] = useState('other');
+  const [classifying, setClassifying] = useState(false);
+  const [ai, setAi] = useState<{ label: string; confidence: number; matched: boolean } | null>(null);
+  const [aiNote, setAiNote] = useState('');
 
-  const onPick = (f: File) => {
-    setPicked(f);
-    if (!name.trim()) setName(f.name.replace(/\.[^.]+$/, ''));
-  };
-
+  // File-level doc types the type select offers (must include any type the AI can emit).
+  const transportDoc = file.mode === 'air' ? 'awb' : 'bill_of_lading';
+  const fileDocTypes = [...COMMON_FILE_DOCS, transportDoc, 'coa', ...CUSTOMS_DOCS];
   const typeOptions: { value: string; label: string }[] = [
     { value: 'other', label: 'Other / custom' },
     ...file.invoices.flatMap((inv) => [
       { value: `inv:${inv.id}:commercial_invoice`, label: `Commercial Invoice — ${inv.supplier}` },
       { value: `inv:${inv.id}:packing_list`, label: `Packing List — ${inv.supplier}` },
     ]),
-    ...[...COMMON_FILE_DOCS, ...CUSTOMS_DOCS].map((t) => ({ value: `file:${t}`, label: docLabel(t) })),
+    ...fileDocTypes.map((t) => ({ value: `file:${t}`, label: docLabel(t) })),
   ];
+
+  // AI result -> select the right slot + suggest a title. Falls back to manual.
+  const applyClassification = (c: ClassifyResult) => {
+    const isInvoiceDoc = c.docType === 'commercial_invoice' || c.docType === 'packing_list';
+    if (isInvoiceDoc) {
+      const inv = matchInvoice(file.invoices, c);
+      if (inv) {
+        setTypeValue(`inv:${inv.id}:${c.docType}`);
+        setName(`${docLabel(c.docType)} — ${inv.supplier}`);
+        setAi({ label: `${docLabel(c.docType)} → ${inv.supplier}`, confidence: c.confidence, matched: true });
+        return;
+      }
+    }
+    if (c.docType !== 'other' && fileDocTypes.includes(c.docType)) {
+      setTypeValue(`file:${c.docType}`);
+      setName(docLabel(c.docType));
+      setAi({ label: docLabel(c.docType), confidence: c.confidence, matched: true });
+      return;
+    }
+    // Couldn't confidently slot it — leave as custom, keep the filename-based name.
+    setAi({
+      label: c.docType === 'other' ? 'Unrecognised type' : docLabel(c.docType),
+      confidence: c.confidence,
+      matched: false,
+    });
+  };
+
+  const onPick = async (f: File) => {
+    setPicked(f);
+    setAi(null);
+    setAiNote('');
+    setTypeValue('other');
+    setName(f.name.replace(/\.[^.]+$/, ''));
+    setClassifying(true);
+    try {
+      applyClassification(await aiClassify(f));
+    } catch (e) {
+      setAiNote(
+        e instanceof AiError && !e.recoverable
+          ? 'AI not running — pick the type below manually.'
+          : 'Could not auto-detect — pick the type below.',
+      );
+    } finally {
+      setClassifying(false);
+    }
+  };
 
   const submit = () => {
     if (!picked || !name.trim()) return;
@@ -821,14 +913,14 @@ function AddDocumentModal({
   return (
     <Modal
       title="Add document"
-      subtitle="Any file — PDF, photo, scan"
+      subtitle="Any file — AI auto-detects the type"
       onClose={onClose}
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={!picked || !name.trim()} onClick={submit}>
+          <Button disabled={!picked || !name.trim() || classifying} onClick={submit}>
             Add document
           </Button>
         </div>
@@ -842,17 +934,38 @@ function AddDocumentModal({
             onChange={(e) => {
               const f = e.target.files?.[0];
               e.target.value = '';
-              if (f) onPick(f);
+              if (f) void onPick(f);
             }}
           />
           {picked ? <FileUp size={26} className="text-navy" /> : <Upload size={26} />}
           <span className="text-sm font-semibold text-medium">{picked ? picked.name : 'Choose a file'}</span>
           <span className="text-xs">Any type · image, PDF or document</span>
         </label>
+
+        {/* AI auto-detect feedback */}
+        {classifying && (
+          <div className="flex items-center gap-2 rounded-card bg-navy/5 px-3 py-2 text-xs font-semibold text-navy">
+            <Loader2 size={14} className="animate-spin" /> Reading document with AI…
+          </div>
+        )}
+        {!classifying && ai && (
+          <div
+            className={cx(
+              'flex items-center gap-2 rounded-card px-3 py-2 text-xs font-semibold',
+              ai.matched ? 'bg-green/10 text-green' : 'bg-amber/10 text-amber',
+            )}
+          >
+            <Sparkles size={14} />
+            {ai.matched ? 'Detected' : 'Best guess'}: {ai.label}
+            <span className="ml-auto font-medium opacity-70">{Math.round(ai.confidence * 100)}%</span>
+          </div>
+        )}
+        {!classifying && aiNote && <p className="text-xs text-muted">{aiNote}</p>}
+
         <L label="Name">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bank NOC" className={inputCls} />
         </L>
-        <L label="Type (optional)">
+        <L label={ai?.matched ? 'Type (AI-detected — change if wrong)' : 'Type'}>
           <select value={typeValue} onChange={(e) => setTypeValue(e.target.value)} className={inputCls}>
             {typeOptions.map((o) => (
               <option key={o.value} value={o.value}>

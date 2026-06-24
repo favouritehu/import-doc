@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
-import { extract, extractFromText, discrepancy, translate, aiStatus, AiError, type InputFile } from '../services/ai';
+import { extract, extractFromText, classify, discrepancy, translate, aiStatus, AiError, type InputFile } from '../services/ai';
 
 function fail(reply: FastifyReply, e: unknown): FastifyReply {
   if (e instanceof AiError) {
@@ -20,6 +20,18 @@ export const ai: FastifyPluginAsync = async (app) => {
     if (!files.length) return reply.code(400).send({ error: 'no_files' });
     try {
       return await extract(files);
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  // Classify ONE uploaded document -> {docType, title, supplier, invoiceNumber, ...}.
+  app.post('/classify', async (req, reply) => {
+    const body = req.body as { file?: InputFile };
+    const f = body?.file;
+    if (!f?.dataBase64 || !f?.mimeType) return reply.code(400).send({ error: 'no_file' });
+    try {
+      return await classify(f);
     } catch (e) {
       return fail(reply, e);
     }

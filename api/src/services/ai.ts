@@ -146,6 +146,7 @@ export interface ExtractedInvoice {
   invoiceDate: string;
   product: string;
   qty: string;
+  weight: string;
   hsn: string;
   amount: number;
   currency: string;
@@ -178,6 +179,7 @@ function coerceExtract(raw: any): ExtractResult {
       product: str(i.product ?? i.goods ?? i.description),
       hsn: str(i.hsn ?? i.hsnCode ?? i.hs_code),
       qty: str(i.qty ?? i.quantity),
+      weight: str(i.weight ?? i.grossWeight ?? i.netWeight ?? i.gross_weight ?? i.net_weight),
       amount: coerceAmount(i.amount ?? i.value ?? i.total),
       currency: coerceCurrency(i.currency ?? f.currency),
     }));
@@ -202,8 +204,55 @@ function coerceExtract(raw: any): ExtractResult {
 
 const EXTRACT_PROMPT = `You read import shipping documents (commercial invoices, proforma invoices, packing lists, bills of lading). Extract structured data and OUTPUT JSON ONLY in this exact shape:
 {"file":{"country":"","mode":"sea|air","incoterm":"FOB|CIF|CFR|EXW|DAP|OTHER","blAwb":"","portLoading":"","portArrival":"","eta":"","shippingLine":"","forwarder":"","cha":""},
- "invoices":[{"supplier":"","invoiceNumber":"","invoiceDate":"","product":"","qty":"","hsn":"","amount":0,"currency":"USD|EUR|CNY|INR"}]}
-Rules: One file may contain SEVERAL invoices (possibly from different suppliers) — return each as a separate item in "invoices". amount is a number (no symbols/commas). Use empty string for unknown fields. Translate Chinese field values to English where natural, but keep supplier names and invoice numbers verbatim. Do not invent values.`;
+ "invoices":[{"supplier":"","invoiceNumber":"","invoiceDate":"","product":"","qty":"","weight":"","hsn":"","amount":0,"currency":"USD|EUR|CNY|INR"}]}
+Rules: One file may contain SEVERAL invoices (possibly from different suppliers) — return each as a separate item in "invoices". amount is a number (no symbols/commas). "weight" is the gross (or net) weight WITH its unit, e.g. "1,250 kg" — empty if absent. Use empty string for unknown fields. Translate Chinese field values to English where natural, but keep supplier names and invoice numbers verbatim. Do not invent values.`;
+
+// Allowed document types the classifier must choose from (must match app docs.ts).
+const DOC_TYPES = [
+  'commercial_invoice', 'packing_list', 'proforma_invoice', 'purchase_order',
+  'bill_of_lading', 'awb', 'certificate_of_origin', 'insurance_copy', 'coa',
+  'payment_proof', 'bank_letter', 'freight_invoice', 'bill_of_entry',
+  'duty_challan', 'assessment_copy', 'out_of_charge', 'delivery_order', 'other',
+];
+
+export interface ClassifyResult {
+  docType: string; // one of DOC_TYPES
+  title: string; // human label, e.g. "Commercial Invoice — Ningbo Foods"
+  supplier: string; // for matching CI/PL to the right invoice line
+  invoiceNumber: string;
+  product: string;
+  weight: string;
+  confidence: number; // 0..1
+}
+
+const CLASSIFY_PROMPT = `You classify ONE uploaded import document. Identify its type and OUTPUT JSON ONLY:
+{"docType":"<one of: ${DOC_TYPES.join(', ')}>","supplier":"","invoiceNumber":"","product":"","weight":"","confidence":0.0}
+docType MUST be exactly one of the listed values; use "other" if none fit. Fill supplier/invoiceNumber/product/weight ONLY when the document is a commercial_invoice or packing_list (these route to a specific invoice line) — keep supplier and invoiceNumber verbatim; "weight" includes its unit (e.g. "1,250 kg"). confidence is your certainty 0..1. Do not invent values; use empty strings when unknown.`;
+
+function coerceClassify(raw: any): ClassifyResult {
+  const dt = str(raw?.docType).toLowerCase().replace(/[\s-]+/g, '_');
+  const docType = DOC_TYPES.includes(dt) ? dt : 'other';
+  const conf = typeof raw?.confidence === 'number' ? Math.max(0, Math.min(1, raw.confidence)) : 0.5;
+  return {
+    docType,
+    title: str(raw?.title) || '',
+    supplier: str(raw?.supplier),
+    invoiceNumber: str(raw?.invoiceNumber ?? raw?.invoice_no ?? raw?.invoiceNo),
+    product: str(raw?.product ?? raw?.goods ?? raw?.description),
+    weight: str(raw?.weight ?? raw?.grossWeight ?? raw?.netWeight),
+    confidence: conf,
+  };
+}
+
+/** Vision-classify a single uploaded document into a known doc type + slot hints. */
+export async function classify(file: InputFile): Promise<ClassifyResult> {
+  if (!hasGemini()) throw new AiError('ai_not_configured: set GEMINI_API_KEY', 503);
+  const parts: unknown[] = [
+    { text: CLASSIFY_PROMPT },
+    { inline_data: { mime_type: file.mimeType, data: file.dataBase64 } },
+  ];
+  return coerceClassify(await geminiJson(parts));
+}
 
 export async function extract(files: InputFile[]): Promise<ExtractResult> {
   if (!hasGemini()) throw new AiError('ai_not_configured: set GEMINI_API_KEY', 503);

@@ -56,6 +56,7 @@ export interface InvoiceDraft {
   invoiceDate?: string;
   product?: string;
   qty?: string;
+  weight?: string;
   hsn?: string;
   rate?: number;
 }
@@ -70,6 +71,7 @@ export function mkInvoice(draft: InvoiceDraft): Invoice {
     invoiceDate: draft.invoiceDate ?? '',
     product: draft.product ?? '',
     qty: draft.qty ?? '',
+    weight: draft.weight,
     hsn: draft.hsn,
     usd: draft.usd,
     currency,

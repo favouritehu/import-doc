@@ -74,6 +74,7 @@ export interface Invoice {
   invoiceDate: string;
   product: string;
   qty: string;
+  weight?: string; // gross/net weight with unit, e.g. "1,250 kg"
   hsn?: string; // financial-gated in UI (RolePolicy.canSeeHsn)
   usd: number; // goods value in `currency`
   currency: Currency;

@@ -63,15 +63,30 @@ export function ImportFileCard({
         </div>
       </div>
 
-      {/* every invoice's supplier + number — the card's headline now */}
-      <div className="mt-1.5 flex flex-col gap-1">
+      {/* every invoice: supplier (primary) · product (secondary) · weight (chip) */}
+      <div className="mt-1.5 flex flex-col gap-2">
         {invoices.map((inv, i) => (
-          <div key={inv.id ?? i} className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-sm font-semibold leading-snug text-ink">
-              {inv.supplier || '—'}
-            </span>
-            {inv.invoiceNumber && (
-              <span className="shrink-0 text-[11px] font-medium text-muted">{inv.invoiceNumber}</span>
+          <div
+            key={inv.id ?? i}
+            className="border-border/60 border-t pt-2 first:border-0 first:pt-0"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="truncate text-sm font-semibold leading-snug text-ink">
+                {inv.supplier || '—'}
+              </span>
+              {inv.invoiceNumber && (
+                <span className="shrink-0 text-[11px] font-medium text-faint">{inv.invoiceNumber}</span>
+              )}
+            </div>
+            {(inv.product || inv.weight) && (
+              <div className="mt-0.5 flex items-center justify-between gap-2">
+                <span className="truncate text-xs text-medium">{inv.product || '—'}</span>
+                {inv.weight && (
+                  <span className="shrink-0 rounded-full bg-page px-1.5 py-px text-[10px] font-semibold text-muted">
+                    {inv.weight}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         ))}
