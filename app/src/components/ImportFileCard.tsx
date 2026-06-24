@@ -1,7 +1,7 @@
 import { Plane, Ship, Trash2 } from 'lucide-react';
 import type { ImportFile } from '../types';
 import { derivePriority, deriveStatus, responsibleOf } from '../lib/derive';
-import { fileValueInr, inr, supplierLabel } from '../lib/format';
+import { fileValueInr, inr } from '../lib/format';
 import { PriorityBadge, StatusBadge } from './Badge';
 import { ProgressBar } from './ProgressStepper';
 
@@ -20,8 +20,7 @@ export function ImportFileCard({
   const prio = derivePriority(file);
   const [who, role] = responsibleOf(file);
   const Mode = file.mode === 'air' ? Plane : Ship;
-  const product =
-    file.invoices.length > 1 ? `${file.invoices.length} invoices` : file.invoices[0]?.product || '—';
+  const invoices = file.invoices;
 
   return (
     <div
@@ -36,13 +35,16 @@ export function ImportFileCard({
       }}
       className="anim-pop flex w-full cursor-pointer flex-col rounded-card border border-border bg-white p-4 text-left shadow-card transition hover:border-navy focus:outline-none focus-visible:border-navy"
     >
+      {/* eyebrow: file number is now small + muted, no longer the headline */}
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="font-display text-sm font-bold text-blue">{file.fileNumber}</span>
-            <Mode size={13} className="text-faint" />
-          </div>
-          <div className="mt-0.5 truncate text-sm font-semibold text-ink">{supplierLabel(file)}</div>
+        <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-faint">
+          <span className="text-blue">{file.fileNumber}</span>
+          <Mode size={12} className="text-faint" />
+          {invoices.length > 1 && (
+            <span className="rounded-full bg-page px-1.5 py-px text-[10px] font-bold text-muted">
+              {invoices.length} invoices
+            </span>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <PriorityBadge priority={prio} />
@@ -61,7 +63,19 @@ export function ImportFileCard({
         </div>
       </div>
 
-      <div className="mt-0.5 truncate text-xs text-muted">{product}</div>
+      {/* every invoice's supplier + number — the card's headline now */}
+      <div className="mt-1.5 flex flex-col gap-1">
+        {invoices.map((inv, i) => (
+          <div key={inv.id ?? i} className="flex items-baseline justify-between gap-2">
+            <span className="truncate text-sm font-semibold leading-snug text-ink">
+              {inv.supplier || '—'}
+            </span>
+            {inv.invoiceNumber && (
+              <span className="shrink-0 text-[11px] font-medium text-muted">{inv.invoiceNumber}</span>
+            )}
+          </div>
+        ))}
+      </div>
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <StatusBadge status={status} />

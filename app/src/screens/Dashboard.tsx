@@ -26,7 +26,8 @@ export function Dashboard() {
   const inFlight = open
     .filter((f) => !['goods_received'].includes(deriveStatus(f)))
     .sort((a, b) => (derivePriority(b) === 'urgent' ? 1 : 0) - (derivePriority(a) === 'urgent' ? 1 : 0));
-  const recent = [...files].slice(0, 4);
+  // Show every import on the dashboard (newest first), not just a slice.
+  const allFiles = [...files].sort((a, b) => b.id - a.id);
 
   return (
     <>
@@ -75,13 +76,11 @@ export function Dashboard() {
 
             <section>
               <div className="mb-2 flex items-center justify-between">
-                <h2 className="font-display text-sm font-bold text-ink">Recent imports</h2>
-                <button onClick={() => nav('/files')} className="text-xs font-semibold text-navy hover:underline">
-                  View all
-                </button>
+                <h2 className="font-display text-sm font-bold text-ink">All imports</h2>
+                <span className="text-xs font-semibold text-muted">{allFiles.length} files</span>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                {recent.map((f) => (
+                {allFiles.map((f) => (
                   <ImportFileCard key={f.id} file={f} showInr={showInr} onClick={() => nav(`/files/${f.id}`)} />
                 ))}
               </div>
