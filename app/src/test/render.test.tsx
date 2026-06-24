@@ -3,14 +3,17 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { StoreProvider } from '../store/store';
+import { SEED_FILES } from '../data/seed';
 import { Dashboard } from '../screens/Dashboard';
 import { FilesList } from '../screens/FilesList';
 import { FileDetail } from '../screens/FileDetail';
 
+// SSR render runs no effects, so the store never hydrates from IndexedDB here.
+// Inject the seed directly so these smoke tests exercise real data.
 function render(ui: ReactNode, route = '/'): string {
   return renderToStaticMarkup(
     <MemoryRouter initialEntries={[route]}>
-      <StoreProvider>{ui}</StoreProvider>
+      <StoreProvider initialFiles={SEED_FILES}>{ui}</StoreProvider>
     </MemoryRouter>,
   );
 }

@@ -63,7 +63,7 @@ export function CreateFile() {
 
   return (
     <>
-      <TopBar title="New import file" subtitle="Pick a template — 3 taps" back />
+      <TopBar title="New import file" subtitle="Choose how to add it" back />
       <Page>
         {view === 'pick' && (
           <PickView
@@ -165,38 +165,46 @@ function PickView({
           </p>
         </div>
       </button>
-      <h2 className="mb-3 font-display text-base font-bold text-ink">Or start from a template</h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {TEMPLATES.map((t) => {
-          const Mode = t.mode === 'air' ? Plane : Ship;
-          return (
-            <button
-              key={t.id}
-              onClick={() => onTemplate(t.id)}
-              className="anim-pop rounded-card border border-border bg-white p-4 text-left shadow-card transition hover:border-navy"
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-display text-sm font-bold text-ink">{t.name}</span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-page px-2 py-0.5 text-[10px] font-bold uppercase text-muted">
-                  <Mode size={12} /> {t.mode}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-muted">{t.supplier}</p>
-              <p className="mt-2 text-[11px] text-faint">
-                {t.incoterm} · {t.currency} · {t.requiredDocsCount} docs
-              </p>
-            </button>
-          );
-        })}
-        <button
-          onClick={onBlank}
-          className="grid place-items-center rounded-card border border-dashed border-divider bg-white p-4 text-center text-muted transition hover:border-navy hover:text-ink"
-        >
+      {TEMPLATES.length > 0 && (
+        <>
+          <h2 className="mb-3 font-display text-base font-bold text-ink">Or start from a template</h2>
+          <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {TEMPLATES.map((t) => {
+              const Mode = t.mode === 'air' ? Plane : Ship;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onTemplate(t.id)}
+                  className="anim-pop rounded-card border border-border bg-white p-4 text-left shadow-card transition hover:border-navy"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-display text-sm font-bold text-ink">{t.name}</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-page px-2 py-0.5 text-[10px] font-bold uppercase text-muted">
+                      <Mode size={12} /> {t.mode}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted">{t.supplier}</p>
+                  <p className="mt-2 text-[11px] text-faint">
+                    {t.incoterm} · {t.currency} · {t.requiredDocsCount} docs
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+      <button
+        onClick={onBlank}
+        className="flex w-full items-center gap-3 rounded-card border border-dashed border-divider bg-white p-4 text-left text-muted transition hover:border-navy hover:text-ink"
+      >
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-page text-medium">
           <Sparkles size={20} />
-          <span className="mt-1 text-sm font-semibold">Blank file</span>
-          <span className="text-[11px]">Advanced · 4 steps</span>
-        </button>
-      </div>
+        </span>
+        <div className="min-w-0 flex-1">
+          <span className="font-display text-sm font-bold text-ink">Blank file</span>
+          <p className="text-xs text-muted">Fill everything in by hand — advanced, 4 steps.</p>
+        </div>
+      </button>
     </div>
   );
 }

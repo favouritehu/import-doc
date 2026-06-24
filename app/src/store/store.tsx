@@ -9,6 +9,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -178,11 +179,24 @@ export interface TemplateLike {
 
 const StoreCtx = createContext<Store | null>(null);
 
-export function StoreProvider({ children }: { children: ReactNode }) {
+export function StoreProvider({
+  children,
+  initialFiles,
+}: {
+  children: ReactNode;
+  /** Test-only seed. Production starts empty (no demo flash) and hydrates from IDB. */
+  initialFiles?: ImportFile[];
+}) {
   const [user, setUser] = useState<User | null>(() => loadUser());
   const role: Role = user?.role ?? 'admin';
-  const [files, setFiles] = useState<ImportFile[]>(SEED_FILES);
+  // Start empty — never flash demo files before IndexedDB hydrates. The real
+  // files load in the hydrate effect below; demo is opt-in via Settings → reset.
+  const [files, setFiles] = useState<ImportFile[]>(initialFiles ?? []);
   const [ready, setReady] = useState(false);
+  // Persist guard: stays false until IndexedDB hydration SUCCEEDS. The persist
+  // effect refuses to write while false, so a failed/slow load can never
+  // overwrite stored files with the empty initial array (the data-loss bug).
+  const loaded = useRef(false);
   const [users, setUsers] = useState<User[]>(() => loadUsers());
   const [toast, setToast] = useState<string | null>(null);
 
@@ -229,9 +243,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .then((saved) => {
         if (!alive) return;
         setFiles(saved ?? []); // fresh install starts empty (demo via Settings → Reset to demo)
+        loaded.current = true; // only now may the persist effect write to IDB
         setReady(true);
       })
       .catch(() => {
+        // Load failed — keep loaded=false so we NEVER overwrite stored files
+        // with the empty array. UI proceeds; next reload retries the load.
         if (alive) setReady(true);
       });
     return () => {
@@ -240,8 +257,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Persist files (incl. uploaded files as data URLs) to IndexedDB on change.
+  // Guarded by loaded.current (not just ready) so a failed hydrate can't wipe IDB.
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !loaded.current) return;
     idbSet(FILES_IDB_KEY, files).catch(() => showToast('Could not save — storage error'));
   }, [files, ready, showToast]);
 

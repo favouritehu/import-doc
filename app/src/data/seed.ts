@@ -43,7 +43,11 @@ export const ITEMS: ItemMaster[] = [
   { id: 4, name: 'Pectin Powder', hsn: '13023900', uom: 'KG' },
 ];
 
-export const TEMPLATES: FileTemplate[] = [
+// Live template picker is empty by default — no demo templates. The originals
+// are kept here (unused) only as a reference / future restore source.
+export const TEMPLATES: FileTemplate[] = [];
+
+const DEMO_TEMPLATES: FileTemplate[] = [
   {
     id: 'tpl-ningbo-pulp',
     name: 'Ningbo · Aseptic Pulp',
