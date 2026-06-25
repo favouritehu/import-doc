@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { AppShell } from './components/AppShell';
 import { useStore } from './store/store';
 import { Welcome } from './screens/Welcome';
-import { Dashboard } from './screens/Dashboard';
+import { Workspace } from './screens/Workspace';
 import { Today } from './screens/Today';
 import { Calendar } from './screens/Calendar';
 import { FilesList } from './screens/FilesList';
@@ -37,7 +37,7 @@ export default function App() {
           </RequireAuth>
         }
       >
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<Workspace />} />
         <Route path="/today" element={<Today />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/files" element={<FilesList />} />

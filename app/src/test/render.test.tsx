@@ -1,13 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { StoreProvider } from '../store/store';
 import { SEED_FILES } from '../data/seed';
-import { Dashboard } from '../screens/Dashboard';
+import { Workspace } from '../screens/Workspace';
 import { Today } from '../screens/Today';
 import { FilesList } from '../screens/FilesList';
 import { FileDetail } from '../screens/FileDetail';
+
+// jsdom ships no matchMedia; useIsMobile reads it on first render. Stub desktop.
+beforeAll(() => {
+  if (!window.matchMedia) {
+    window.matchMedia = ((q: string) => ({
+      matches: false,
+      media: q,
+      addEventListener() {},
+      removeEventListener() {},
+    })) as unknown as typeof window.matchMedia;
+  }
+});
 
 // SSR render runs no effects, so the store never hydrates from IndexedDB here.
 // Inject the seed directly so these smoke tests exercise real data.
@@ -20,11 +32,11 @@ function render(ui: ReactNode, route = '/'): string {
 }
 
 describe('screens render with seed data (no runtime throw)', () => {
-  it('Dashboard surfaces file numbers + the demurrage alert', () => {
-    const html = render(<Dashboard />);
-    expect(html).toContain('Dashboard');
-    expect(html).toContain('IMP-25-0001');
-    expect(html).toContain('Demurrage risk');
+  it('Workspace rail leads with party names + IMP ids', () => {
+    const html = render(<Workspace />);
+    expect(html).toContain('Imports');
+    expect(html).toContain('Ningbo Foods Co.'); // party name = the hero
+    expect(html).toContain('IMP-25-'); // IMP id stays as the secondary
   });
 
   it('Today surfaces due items merged across files', () => {

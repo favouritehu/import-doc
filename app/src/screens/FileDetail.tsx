@@ -36,10 +36,32 @@ const toIso = (s?: string | null): string => {
 
 export function FileDetail() {
   const { id } = useParams();
+  const store = useStore();
+  const file = store.getFile(Number(id));
+  if (!file) {
+    return (
+      <>
+        <TopBar title="Not found" back />
+        <Page>
+          <p className="text-sm text-muted">This import file does not exist.</p>
+        </Page>
+      </>
+    );
+  }
+  return (
+    <>
+      <TopBar title={supplierLabel(file)} subtitle={file.fileNumber} back />
+      <FileDetailBody file={file} />
+    </>
+  );
+}
+
+/** The file workspace body (no TopBar) — shared by the /files/:id route and the
+ *  parties Workspace detail pane. */
+export function FileDetailBody({ file }: { file: ImportFile }) {
   const nav = useNavigate();
   const store = useStore();
   const { role } = store;
-  const file = store.getFile(Number(id));
   const [params, setParams] = useSearchParams();
   const [slide, setSlide] = useState<{ type: string; invoiceId?: string } | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -52,17 +74,6 @@ export function FileDetail() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [chaseOpen, setChaseOpen] = useState(false);
 
-  if (!file) {
-    return (
-      <>
-        <TopBar title="Not found" back />
-        <Page>
-          <p className="text-sm text-muted">This import file does not exist.</p>
-        </Page>
-      </>
-    );
-  }
-
   const canFin = RolePolicy.canSeeFinancials(role);
   const canHsn = RolePolicy.canSeeHsn(role);
   const canClose = RolePolicy.canMarkClosed(role);
@@ -71,7 +82,12 @@ export function FileDetail() {
   const [who, whoRole] = responsibleOf(file);
 
   const tab = params.get('tab') ?? 'summary';
-  const setTab = (t: string) => setParams({ tab: t }, { replace: true });
+  // Merge — preserve other params (e.g. ?file in the Workspace) when switching tabs.
+  const setTab = (t: string) => {
+    const next = new URLSearchParams(params);
+    next.set('tab', t);
+    setParams(next, { replace: true });
+  };
   const tabs = [
     { key: 'summary', label: 'Summary' },
     { key: 'documents', label: 'Documents' },
@@ -126,7 +142,6 @@ export function FileDetail() {
 
   return (
     <>
-      <TopBar title={file.fileNumber} subtitle={supplierLabel(file)} back />
       <Page>
         {/* Header card */}
         <div className="mb-4 rounded-card border border-border bg-white p-4 shadow-card">
