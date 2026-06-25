@@ -16,6 +16,14 @@ const DOT: Record<RailStatus, string> = {
   none: '#CBD5E1',
 };
 
+// Arrival line colour — red = urgent sign, green = safe zone.
+const LINE: Record<RailStatus, string> = {
+  red: '#DC2626',
+  amber: '#B45309',
+  green: '#16A34A',
+  none: '#64748B',
+};
+
 /** The party rail: search + All/Needs-attention filter + urgency-ranked rows. */
 function PartiesRail({
   items,
@@ -88,8 +96,11 @@ function PartiesRail({
               />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-ink">{it.party}</span>
-                <span className="block truncate text-[11px] text-muted">
-                  {it.fileNumber} · {it.line}
+                <span className="block truncate text-[11px]">
+                  <span className="text-faint">{it.fileNumber} · </span>
+                  <span className="font-semibold" style={{ color: LINE[it.status] }}>
+                    {it.line}
+                  </span>
                 </span>
               </span>
             </button>
