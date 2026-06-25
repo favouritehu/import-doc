@@ -1,5 +1,17 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
-import { extract, extractFromText, classify, discrepancy, translate, aiStatus, AiError, type InputFile } from '../services/ai';
+import {
+  extract,
+  extractFromText,
+  classify,
+  discrepancy,
+  translate,
+  chaseMessage,
+  extractUpdate,
+  aiStatus,
+  AiError,
+  type InputFile,
+  type ChaseInput,
+} from '../services/ai';
 
 function fail(reply: FastifyReply, e: unknown): FastifyReply {
   if (e instanceof AiError) {
@@ -53,6 +65,30 @@ export const ai: FastifyPluginAsync = async (app) => {
     const b = req.body as { invoice?: Record<string, unknown>; refText?: string };
     try {
       return { mismatches: await discrepancy(b?.invoice ?? {}, b?.refText ?? '') };
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  // Draft a bilingual supplier chase message for missing docs.
+  app.post('/chase', async (req, reply) => {
+    const b = req.body as Partial<ChaseInput>;
+    if (!b?.supplier && !(b?.missing && b.missing.length)) {
+      return reply.code(400).send({ error: 'no_input' });
+    }
+    try {
+      return { text: await chaseMessage({ supplier: b.supplier ?? '', invoiceNumber: b.invoiceNumber, fileNumber: b.fileNumber, missing: b.missing ?? [], lang: b.lang }) };
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  // Extract changed shipment fields from a pasted supplier message.
+  app.post('/update', async (req, reply) => {
+    const b = req.body as { text?: string };
+    if (!b?.text?.trim()) return reply.code(400).send({ error: 'no_text' });
+    try {
+      return { fields: await extractUpdate(b.text) };
     } catch (e) {
       return fail(reply, e);
     }

@@ -9,6 +9,7 @@ import { cha } from './routes/cha';
 import { notes } from './routes/notes';
 import { accessLinks } from './routes/access-links';
 import { reports } from './routes/reports';
+import { reminders } from './routes/reminders';
 import { ai } from './routes/ai';
 
 export async function buildServer(): Promise<FastifyInstance> {
@@ -27,6 +28,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(notes, { prefix: '/notes' });
   await app.register(accessLinks, { prefix: '/access-links' });
   await app.register(reports, { prefix: '/reports' });
+  await app.register(reminders, { prefix: '/reminders' });
 
   return app;
 }

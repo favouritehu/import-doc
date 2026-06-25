@@ -122,5 +122,50 @@ export async function aiTranslate(text: string, to: 'en' | 'zh'): Promise<string
   return r.text;
 }
 
+export interface ChasePayload {
+  supplier: string;
+  invoiceNumber?: string;
+  fileNumber?: string;
+  missing: string[];
+  lang?: 'en' | 'zh' | 'both';
+}
+
+/** Draft a bilingual supplier chase message for missing documents. */
+export async function aiChase(payload: ChasePayload): Promise<string> {
+  const r = await post<{ text: string }>('/ai/chase', payload);
+  return r.text;
+}
+
+export interface UpdateFields {
+  etd?: string;
+  eta?: string;
+  blAwb?: string;
+  shippingLine?: string;
+  forwarder?: string;
+  portLoading?: string;
+  portArrival?: string;
+}
+
+/** Extract changed shipment fields from a pasted supplier WhatsApp/email. */
+export async function aiUpdate(text: string): Promise<UpdateFields> {
+  const r = await post<{ fields: UpdateFields }>('/ai/update', { text });
+  return r.fields;
+}
+
+export interface ReminderPayload {
+  fileNumber: string;
+  kind: 'etd' | 'eta';
+  date: string;
+  daysLeft: number;
+  suppliers?: string[];
+  product?: string;
+  to?: { email?: string };
+}
+
+/** Fire a test shipment reminder through the n8n webhook (api holds the URL). */
+export async function sendTestReminder(payload: ReminderPayload): Promise<void> {
+  await post('/reminders/test', payload);
+}
+
 export const CURRENCY_SAFE = (c: string): Currency =>
   (['USD', 'EUR', 'CNY', 'INR'] as const).includes(c as Currency) ? (c as Currency) : 'USD';

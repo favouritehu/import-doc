@@ -315,6 +315,85 @@ export async function translate(text: string, to: 'en' | 'zh'): Promise<string> 
   return str((raw as any)?.text) || text;
 }
 
+// ── Supplier chase message (bilingual) ────────────────────────────────
+
+export interface ChaseInput {
+  supplier: string;
+  invoiceNumber?: string;
+  fileNumber?: string;
+  missing: string[]; // human labels of pending docs
+  lang?: 'en' | 'zh' | 'both';
+}
+
+const CHASE_SYSTEM = `You write a short, polite follow-up message from an importer to their overseas supplier asking for missing shipping documents. Output JSON ONLY: {"text":"<message>"}. Default to BOTH English and Simplified Chinese (English first, then a 中文 version below). Be concise and friendly, address the supplier by name, reference the invoice/file number if given, and list exactly the pending documents. Do not invent documents or facts.`;
+
+export async function chaseMessage(input: ChaseInput): Promise<string> {
+  if (!textConfigured()) throw new AiError('ai_not_configured', 503);
+  const lang = input.lang ?? 'both';
+  const user = `Supplier: ${input.supplier || '(unknown)'}
+Invoice: ${input.invoiceNumber || '-'}
+File: ${input.fileNumber || '-'}
+Pending documents: ${input.missing.length ? input.missing.join(', ') : '(none)'}
+Language: ${lang === 'both' ? 'English + 中文' : lang === 'zh' ? '中文 only' : 'English only'}
+Write the message.`;
+  const raw =
+    textProvider() === 'deepseek'
+      ? await deepseekJson(CHASE_SYSTEM, user)
+      : await geminiJson([{ text: `${CHASE_SYSTEM}\n\n${user}` }]);
+  return str((raw as any)?.text);
+}
+
+// ── Paste-to-update: extract changed shipment fields from a message ────
+
+export interface UpdateFields {
+  etd?: string;
+  eta?: string;
+  blAwb?: string;
+  shippingLine?: string;
+  forwarder?: string;
+  portLoading?: string;
+  portArrival?: string;
+}
+
+const UPDATE_SYSTEM = `You read a supplier/forwarder WhatsApp or email message about a shipment and extract ONLY the shipment fields it states. Output JSON ONLY in this shape (omit a key or use "" if the message doesn't mention it):
+{"etd":"YYYY-MM-DD","eta":"YYYY-MM-DD","blAwb":"","shippingLine":"","forwarder":"","portLoading":"","portArrival":""}
+etd = departure/sailing/loaded date, eta = arrival date — output dates as YYYY-MM-DD. blAwb = Bill of Lading / AWB number. Do not invent values; only extract what is explicitly stated.`;
+
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+function coerceIsoDate(v: unknown): string {
+  const s = str(v);
+  if (!s) return '';
+  if (ISO_RE.test(s)) return s;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export async function extractUpdate(text: string): Promise<UpdateFields> {
+  if (!textConfigured()) throw new AiError('ai_not_configured', 503);
+  const raw =
+    textProvider() === 'deepseek'
+      ? await deepseekJson(UPDATE_SYSTEM, `MESSAGE:\n${text}\n\nOutput the JSON described.`)
+      : await geminiJson([{ text: `${UPDATE_SYSTEM}\n\nMESSAGE:\n${text}` }]);
+  const r = (raw as any) ?? {};
+  const out: UpdateFields = {};
+  const etd = coerceIsoDate(r.etd ?? r.departure);
+  const eta = coerceIsoDate(r.eta ?? r.arrival);
+  if (etd) out.etd = etd;
+  if (eta) out.eta = eta;
+  const blAwb = str(r.blAwb ?? r.bl ?? r.awb);
+  const shippingLine = str(r.shippingLine ?? r.carrier);
+  const forwarder = str(r.forwarder);
+  const portLoading = str(r.portLoading ?? r.pol);
+  const portArrival = str(r.portArrival ?? r.poa ?? r.destination);
+  if (blAwb) out.blAwb = blAwb;
+  if (shippingLine) out.shippingLine = shippingLine;
+  if (forwarder) out.forwarder = forwarder;
+  if (portLoading) out.portLoading = portLoading;
+  if (portArrival) out.portArrival = portArrival;
+  return out;
+}
+
 export function aiStatus() {
   return {
     vision: visionConfigured(),

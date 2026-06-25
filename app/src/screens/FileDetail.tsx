@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Check, FileUp, Link2, Loader2, Lock, Pencil, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
+import { Bell, Check, FileUp, Link2, Loader2, Lock, Pencil, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
 import type { Currency, Doc, ImportFile, Incoterm, Invoice, Mode, PaymentType, Priority, User } from '../types';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
@@ -21,7 +21,9 @@ import { cx } from '../lib/cx';
 import { derivePriority, deriveStatus, relevantPayments, requiredMissingDocs, responsibleOf } from '../lib/derive';
 import { APPROX_INR_RATE, fileValueInr, inr, invoiceInr, supplierLabel } from '../lib/format';
 import { COMMON_FILE_DOCS, CUSTOMS_DOCS, PAYMENT_LABELS, docLabel } from '../lib/docs';
-import { aiClassify, AiError, type ClassifyResult } from '../lib/ai';
+import { aiClassify, aiChase, aiUpdate, sendTestReminder, AiError, type ClassifyResult, type UpdateFields } from '../lib/ai';
+import { fmtDate, todayIso } from '../lib/dates';
+import { shipmentReminders } from '../lib/reminders';
 import { RolePolicy } from '../lib/rolePolicy';
 import { useStore, type AddDocInput } from '../store/store';
 
@@ -40,6 +42,8 @@ export function FileDetail() {
   const [editFile, setEditFile] = useState(false);
   const [editInv, setEditInv] = useState<Invoice | null>(null);
   const [addDoc, setAddDoc] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [chaseOpen, setChaseOpen] = useState(false);
 
   if (!file) {
     return (
@@ -94,6 +98,25 @@ export function FileDetail() {
   ].filter((g) => g.docs.length > 0);
   const reqMissingCount = requiredMissingDocs(file).length;
 
+  // Soonest ETD/ETA reminder — used to fire a test email through n8n (admin).
+  const nextReminder = shipmentReminders(file, todayIso())[0];
+  const sendReminder = async () => {
+    if (!nextReminder) return;
+    try {
+      await sendTestReminder({
+        fileNumber: file.fileNumber,
+        kind: nextReminder.kind,
+        date: nextReminder.date,
+        daysLeft: nextReminder.daysLeft,
+        suppliers: [...new Set(file.invoices.map((i) => i.supplier))],
+        product: file.invoices[0]?.product,
+      });
+      store.showToast('Test reminder sent');
+    } catch (e) {
+      store.showToast(e instanceof AiError && !e.recoverable ? 'n8n reminders not configured' : 'Reminder failed');
+    }
+  };
+
   return (
     <>
       <TopBar title={file.fileNumber} subtitle={supplierLabel(file)} back />
@@ -143,6 +166,14 @@ export function FileDetail() {
             <Button variant="ghost" onClick={() => setEditFile(true)}>
               <Pencil size={15} /> Edit details
             </Button>
+            <Button variant="ghost" onClick={() => setPasteOpen(true)}>
+              <Sparkles size={15} /> Paste update
+            </Button>
+            {role === 'admin' && nextReminder && (
+              <Button variant="ghost" onClick={sendReminder}>
+                <Bell size={15} /> Test reminder
+              </Button>
+            )}
             {canClose && status !== 'closed' && (
               <Button variant="ghost" onClick={() => store.markClosed(file.id)}>
                 Mark closed
@@ -188,11 +219,18 @@ export function FileDetail() {
 
         {tab === 'documents' && (
           <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h3 className="font-display text-sm font-bold text-ink">Documents</h3>
-              <Button onClick={() => setAddDoc(true)}>
-                <Plus size={15} /> Add document
-              </Button>
+              <div className="flex items-center gap-2">
+                {reqMissingCount > 0 && (
+                  <Button variant="ghost" onClick={() => setChaseOpen(true)}>
+                    <Sparkles size={15} /> Draft chase
+                  </Button>
+                )}
+                <Button onClick={() => setAddDoc(true)}>
+                  <Plus size={15} /> Add document
+                </Button>
+              </div>
             </div>
             {docGroups.length > 0 ? (
               <DocumentChecklist groups={docGroups} onRow={(d, invoiceId) => setSlide({ type: d.type, invoiceId })} />
@@ -258,6 +296,17 @@ export function FileDetail() {
           onSave={(patch) => store.updateFile(file.id, patch)}
         />
       )}
+      {pasteOpen && (
+        <PasteUpdateModal
+          file={file}
+          onClose={() => setPasteOpen(false)}
+          onApply={(patch) => {
+            store.updateFile(file.id, patch);
+            store.showToast(`Updated ${Object.keys(patch).length} field(s)`);
+          }}
+        />
+      )}
+      {chaseOpen && <ChaseModal file={file} onClose={() => setChaseOpen(false)} />}
       {editInv && (
         <EditInvoiceModal
           inv={editInv}
@@ -994,6 +1043,208 @@ function AddDocumentModal({
             ))}
           </select>
         </L>
+      </div>
+    </Modal>
+  );
+}
+
+// ── AI: draft a bilingual supplier chase message for missing docs ──────
+function ChaseModal({ file, onClose }: { file: ImportFile; onClose: () => void }) {
+  const missing = requiredMissingDocs(file).map((d) => d.label ?? docLabel(d.type));
+  const [loading, setLoading] = useState(true);
+  const [text, setText] = useState('');
+  const [err, setErr] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    aiChase({
+      supplier: supplierLabel(file),
+      invoiceNumber: file.invoices[0]?.invoiceNumber,
+      fileNumber: file.fileNumber,
+      missing,
+      lang: 'both',
+    })
+      .then((t) => alive && (setText(t), setLoading(false)))
+      .catch((e) => alive && (setErr(e instanceof AiError ? e.message : 'Could not draft message'), setLoading(false)));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const copy = () => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <Modal
+      title="Draft chase message"
+      subtitle={`${missing.length} pending · ${supplierLabel(file)}`}
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent(text)}`}
+            target="_blank"
+            rel="noreferrer"
+            className={cx(
+              'inline-flex items-center gap-1.5 rounded-full bg-green px-3.5 py-2 text-sm font-semibold text-white hover:opacity-90',
+              (!text || loading) && 'pointer-events-none opacity-50',
+            )}
+          >
+            WhatsApp
+          </a>
+          <Button disabled={!text || loading} onClick={copy}>
+            {copied ? <Check size={15} /> : null} {copied ? 'Copied' : 'Copy'}
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-3">
+        <div className="rounded-card bg-page px-3 py-2 text-xs text-muted">
+          Pending: {missing.join(', ') || '—'}
+        </div>
+        {loading && (
+          <div className="flex items-center gap-2 rounded-card bg-navy/5 px-3 py-6 text-sm font-semibold text-navy">
+            <Loader2 size={16} className="animate-spin" /> Drafting a bilingual message…
+          </div>
+        )}
+        {err && <p className="text-xs text-red">{err}</p>}
+        {!loading && !err && (
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={12}
+            className={cx(inputCls, 'font-mono text-[13px] leading-relaxed')}
+          />
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── AI: paste a supplier WhatsApp/email → propose shipment field changes ──
+const UPDATE_LABELS: Record<keyof UpdateFields, string> = {
+  etd: 'ETD (departure)',
+  eta: 'ETA (arrival)',
+  blAwb: 'BL / AWB',
+  shippingLine: 'Shipping line',
+  forwarder: 'Forwarder',
+  portLoading: 'Port of loading',
+  portArrival: 'Port of arrival',
+};
+
+function PasteUpdateModal({
+  file,
+  onClose,
+  onApply,
+}: {
+  file: ImportFile;
+  onClose: () => void;
+  onApply: (patch: Partial<ImportFile>) => void;
+}) {
+  const [text, setText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [fields, setFields] = useState<UpdateFields | null>(null);
+  const [accepted, setAccepted] = useState<Record<string, boolean>>({});
+
+  const run = async () => {
+    setLoading(true);
+    setErr('');
+    try {
+      const f = await aiUpdate(text);
+      setFields(f);
+      setAccepted(Object.fromEntries(Object.keys(f).map((k) => [k, true])));
+    } catch (e) {
+      setErr(e instanceof AiError ? e.message : 'Could not read the update');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const entries = fields ? (Object.entries(fields) as [keyof UpdateFields, string][]).filter(([, v]) => v) : [];
+  const isDate = (k: keyof UpdateFields) => k === 'etd' || k === 'eta';
+  const show = (k: keyof UpdateFields, v: string) => (isDate(k) ? fmtDate(v) || v : v);
+
+  const apply = () => {
+    const patch: Partial<ImportFile> = {};
+    entries.forEach(([k, v]) => {
+      if (accepted[k]) (patch as Record<string, unknown>)[k] = v;
+    });
+    if (Object.keys(patch).length) onApply(patch);
+    onClose();
+  };
+
+  return (
+    <Modal
+      title="Paste an update"
+      subtitle="Supplier WhatsApp/email → AI fills the changes"
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          {fields ? (
+            <Button disabled={!entries.some(([k]) => accepted[k])} onClick={apply}>
+              Apply changes
+            </Button>
+          ) : (
+            <Button disabled={!text.trim() || loading} onClick={run}>
+              {loading ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} Extract
+            </Button>
+          )}
+        </div>
+      }
+    >
+      <div className="grid gap-3">
+        {!fields && (
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={6}
+            placeholder="e.g. Cargo loaded, sailing 2 Jul, BL SUZH26-0501, via Maersk"
+            className={inputCls}
+          />
+        )}
+        {err && <p className="text-xs text-red">{err}</p>}
+        {fields && entries.length === 0 && (
+          <p className="text-sm text-muted">No shipment fields found in that message.</p>
+        )}
+        {fields && entries.length > 0 && (
+          <div className="grid gap-2">
+            <p className="text-xs text-muted">Review and apply:</p>
+            {entries.map(([k, v]) => (
+              <label
+                key={k}
+                className="flex items-center gap-3 rounded-card border border-border px-3 py-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={!!accepted[k]}
+                  onChange={(e) => setAccepted((a) => ({ ...a, [k]: e.target.checked }))}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-semibold text-muted">{UPDATE_LABELS[k]}</div>
+                  <div className="truncate">
+                    <span className="text-faint line-through">
+                      {show(k, (file as unknown as Record<string, unknown>)[k] as string) || '—'}
+                    </span>{' '}
+                    <span className="font-semibold text-ink">→ {show(k, v)}</span>
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
     </Modal>
   );
