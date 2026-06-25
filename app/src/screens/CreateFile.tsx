@@ -7,6 +7,7 @@ import { TopBar } from '../components/TopBar';
 import { Button } from '../components/Button';
 import { cx } from '../lib/cx';
 import { APPROX_INR_RATE, inr } from '../lib/format';
+import { isoOf, parseDate } from '../lib/dates';
 import { TEMPLATES } from '../data/seed';
 import { useStore, type BlankInput } from '../store/store';
 import type { User } from '../types';
@@ -55,11 +56,18 @@ function Field({ label, children }: { label: React.ReactNode; children: React.Re
 
 const inputCls = 'w-full rounded-card border border-border px-3 py-2.5 text-sm outline-none focus:border-navy';
 
-/** "ETD (departure)" label with a green "set ✓" chip once a date is chosen. */
-function EtdLabel({ value }: { value: string }) {
+/** Normalize any date string (legacy "08 Jun 2026", dd/mm/yyyy, ISO) to ISO for
+ *  a <input type="date">; '' if unparseable. */
+const toIso = (s?: string): string => {
+  const d = parseDate(s);
+  return d ? isoOf(d) : '';
+};
+
+/** A date-field label with a green "set ✓" chip once a date is chosen. */
+function DateLabel({ text, value }: { text: string; value: string }) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      ETD (departure)
+      {text}
       {value.trim() && (
         <span className="inline-flex items-center gap-0.5 rounded-full bg-green/10 px-1.5 py-px text-[10px] font-bold text-green">
           <Check size={10} /> set
@@ -257,8 +265,8 @@ function TemplateConfirm({
         <Field label={`Invoice amount (${tpl.currency})`}>
           <input value={usd} onChange={(e) => setUsd(e.target.value)} inputMode="numeric" className={inputCls} placeholder="e.g. 84000" />
         </Field>
-        <Field label="ETA">
-          <input value={eta} onChange={(e) => setEta(e.target.value)} className={inputCls} placeholder="e.g. 28 Jun 2026" />
+        <Field label={<DateLabel text="ETA (arrival)" value={eta} />}>
+          <input type="date" value={eta} onChange={(e) => setEta(e.target.value)} className={inputCls} />
         </Field>
       </div>
 
@@ -422,11 +430,11 @@ function BlankWizard({
             <Field label="BL / AWB no">
               <input value={ship.blAwb} onChange={(e) => setShip({ ...ship, blAwb: e.target.value })} className={inputCls} />
             </Field>
-            <Field label={<EtdLabel value={ship.etd} />}>
+            <Field label={<DateLabel text="ETD (departure)" value={ship.etd} />}>
               <input type="date" value={ship.etd} onChange={(e) => setShip({ ...ship, etd: e.target.value })} className={inputCls} />
             </Field>
-            <Field label="ETA">
-              <input value={ship.eta} onChange={(e) => setShip({ ...ship, eta: e.target.value })} className={inputCls} placeholder="e.g. 28 Jun 2026" />
+            <Field label={<DateLabel text="ETA (arrival)" value={ship.eta} />}>
+              <input type="date" value={ship.eta} onChange={(e) => setShip({ ...ship, eta: e.target.value })} className={inputCls} />
             </Field>
             <Field label="Port of loading">
               <input value={ship.portLoading} onChange={(e) => setShip({ ...ship, portLoading: e.target.value })} className={inputCls} />
@@ -516,7 +524,8 @@ function AiExtractView({
       const text = await extractText(files, setProgress);
       if (!text.trim()) throw new Error('No readable text found — try a clearer photo or a digital PDF.');
       setProgress('Structuring with AI…');
-      setForm(await aiExtractText(text));
+      const r = await aiExtractText(text);
+      setForm({ ...r, file: { ...r.file, etd: toIso(r.file.etd), eta: toIso(r.file.eta) } });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -644,11 +653,11 @@ function AiExtractView({
           <Field label="Port of arrival">
             <input value={f.portArrival} onChange={(e) => setFileField({ portArrival: e.target.value })} className={inputCls} />
           </Field>
-          <Field label={<EtdLabel value={f.etd} />}>
+          <Field label={<DateLabel text="ETD (departure)" value={f.etd} />}>
             <input type="date" value={f.etd} onChange={(e) => setFileField({ etd: e.target.value })} className={inputCls} />
           </Field>
-          <Field label="ETA">
-            <input value={f.eta} onChange={(e) => setFileField({ eta: e.target.value })} className={inputCls} />
+          <Field label={<DateLabel text="ETA (arrival)" value={f.eta} />}>
+            <input type="date" value={f.eta} onChange={(e) => setFileField({ eta: e.target.value })} className={inputCls} />
           </Field>
           <Field label="Shipping line">
             <input value={f.shippingLine} onChange={(e) => setFileField({ shippingLine: e.target.value })} className={inputCls} />
@@ -820,8 +829,8 @@ function QuickStartView({
           <Field label="Incoterm">
             <Segmented value={incoterm} options={INCOTERMS} onChange={setIncoterm} />
           </Field>
-          <Field label="Expected ETA (optional)">
-            <input value={eta} onChange={(e) => setEta(e.target.value)} className={inputCls} placeholder="e.g. 28 Jul 2026" />
+          <Field label={<DateLabel text="Expected ETA (optional)" value={eta} />}>
+            <input type="date" value={eta} onChange={(e) => setEta(e.target.value)} className={inputCls} />
           </Field>
         </div>
         <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-card border border-dashed border-divider px-3 py-2.5 text-sm text-muted transition hover:border-navy">

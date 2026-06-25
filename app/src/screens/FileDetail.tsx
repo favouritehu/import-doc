@@ -22,10 +22,17 @@ import { derivePriority, deriveStatus, relevantPayments, requiredMissingDocs, re
 import { APPROX_INR_RATE, fileValueInr, inr, invoiceInr, supplierLabel } from '../lib/format';
 import { COMMON_FILE_DOCS, CUSTOMS_DOCS, PAYMENT_LABELS, docLabel } from '../lib/docs';
 import { aiClassify, aiChase, aiUpdate, sendTestReminder, AiError, type ClassifyResult, type UpdateFields } from '../lib/ai';
-import { fmtDate, todayIso } from '../lib/dates';
+import { fmtDate, isoOf, parseDate, todayIso } from '../lib/dates';
 import { shipmentReminders } from '../lib/reminders';
 import { RolePolicy } from '../lib/rolePolicy';
 import { useStore, type AddDocInput } from '../store/store';
+
+/** Normalize any date string (legacy "08 Jun 2026", dd/mm/yyyy, ISO) to ISO for
+ *  a <input type="date">; '' if unparseable. */
+const toIso = (s?: string | null): string => {
+  const d = parseDate(s);
+  return d ? isoOf(d) : '';
+};
 
 export function FileDetail() {
   const { id } = useParams();
@@ -653,8 +660,8 @@ function EditFileModal({
     blAwb: file.blAwb,
     portLoading: file.portLoading,
     portArrival: file.portArrival,
-    etd: file.etd ?? '',
-    eta: file.eta,
+    etd: toIso(file.etd),
+    eta: toIso(file.eta),
     shippingLine: file.shippingLine,
     forwarder: file.forwarder,
     cha: file.cha,
@@ -733,8 +740,19 @@ function EditFileModal({
         >
           <input type="date" value={f.etd} onChange={(e) => set({ etd: e.target.value })} className={inputCls} />
         </L>
-        <L label="ETA">
-          <input value={f.eta} onChange={(e) => set({ eta: e.target.value })} className={inputCls} placeholder="e.g. 28 Jul 2026" />
+        <L
+          label={
+            <span className="inline-flex items-center gap-1.5">
+              ETA (arrival)
+              {f.eta.trim() && (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-green/10 px-1.5 py-px text-[10px] font-bold text-green">
+                  <Check size={10} /> set
+                </span>
+              )}
+            </span>
+          }
+        >
+          <input type="date" value={f.eta} onChange={(e) => set({ eta: e.target.value })} className={inputCls} />
         </L>
         <L label="Shipping line">
           <input value={f.shippingLine} onChange={(e) => set({ shippingLine: e.target.value })} className={inputCls} />
