@@ -2,7 +2,9 @@
 // PendingDocs / PendingPayments screens.
 
 import type { ImportFile, Payment } from '../types';
+import { todayIso } from './dates';
 import { allAlerts, relevantPayments, requiredMissingDocs } from './derive';
+import { dueReminderCount } from './reminders';
 
 const isOpen = (p: Payment): boolean =>
   p.status === 'pending' || p.status === 'part_paid' || p.status === 'overdue';
@@ -36,6 +38,7 @@ export function pendingPaymentRows(files: ImportFile[]): PendingPayRow[] {
 }
 
 export interface NavBadges {
+  today: number;
   'pending-docs': number;
   'pending-payments': number;
   alerts: number;
@@ -43,6 +46,7 @@ export interface NavBadges {
 
 export function navBadges(files: ImportFile[]): NavBadges {
   return {
+    today: dueReminderCount(files, todayIso()),
     'pending-docs': filesNeedingDocs(files).length,
     'pending-payments': filesNeedingPayments(files).length,
     alerts: allAlerts(files).length,

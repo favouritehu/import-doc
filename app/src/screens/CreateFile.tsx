@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Loader2, Plane, Plus, Ship, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
+import { Check, FileText, Loader2, Plane, Plus, Ship, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
 import type { Currency, Incoterm, Mode, Priority } from '../types';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
@@ -44,7 +44,7 @@ function Segmented<T extends string>({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-semibold text-muted">{label}</span>
@@ -54,6 +54,20 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputCls = 'w-full rounded-card border border-border px-3 py-2.5 text-sm outline-none focus:border-navy';
+
+/** "ETD (departure)" label with a green "set ✓" chip once a date is chosen. */
+function EtdLabel({ value }: { value: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      ETD (departure)
+      {value.trim() && (
+        <span className="inline-flex items-center gap-0.5 rounded-full bg-green/10 px-1.5 py-px text-[10px] font-bold text-green">
+          <Check size={10} /> set
+        </span>
+      )}
+    </span>
+  );
+}
 
 export function CreateFile() {
   const nav = useNavigate();
@@ -292,6 +306,7 @@ function BlankWizard({
     blAwb: '',
     portLoading: '',
     portArrival: '',
+    etd: '',
     eta: '',
     shippingLine: '',
     forwarder: 'OceanLink Logistics',
@@ -406,6 +421,9 @@ function BlankWizard({
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="BL / AWB no">
               <input value={ship.blAwb} onChange={(e) => setShip({ ...ship, blAwb: e.target.value })} className={inputCls} />
+            </Field>
+            <Field label={<EtdLabel value={ship.etd} />}>
+              <input type="date" value={ship.etd} onChange={(e) => setShip({ ...ship, etd: e.target.value })} className={inputCls} />
             </Field>
             <Field label="ETA">
               <input value={ship.eta} onChange={(e) => setShip({ ...ship, eta: e.target.value })} className={inputCls} placeholder="e.g. 28 Jun 2026" />
@@ -522,6 +540,7 @@ function AiExtractView({
       blAwb: f.blAwb,
       portLoading: f.portLoading,
       portArrival: f.portArrival,
+      etd: f.etd,
       eta: f.eta,
       etaDays: 21,
       shippingLine: f.shippingLine,
@@ -624,6 +643,9 @@ function AiExtractView({
           </Field>
           <Field label="Port of arrival">
             <input value={f.portArrival} onChange={(e) => setFileField({ portArrival: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label={<EtdLabel value={f.etd} />}>
+            <input type="date" value={f.etd} onChange={(e) => setFileField({ etd: e.target.value })} className={inputCls} />
           </Field>
           <Field label="ETA">
             <input value={f.eta} onChange={(e) => setFileField({ eta: e.target.value })} className={inputCls} />

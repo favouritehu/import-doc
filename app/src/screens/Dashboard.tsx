@@ -1,15 +1,23 @@
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, FileWarning, FolderOpen, FolderPlus, Plus, Ship, Wallet } from 'lucide-react';
+import { AlertTriangle, ChevronRight, FileWarning, FolderOpen, FolderPlus, Plus, Ship, Wallet } from 'lucide-react';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
 import { StatCard } from '../components/StatCard';
 import { AlertCard } from '../components/AlertCard';
 import { ImportFileCard } from '../components/ImportFileCard';
 import { StatusBadge } from '../components/Badge';
+import { todayIso } from '../lib/dates';
 import { allAlerts, derivePriority, deriveStatus, responsibleOf } from '../lib/derive';
 import { filesNeedingDocs, filesNeedingPayments } from '../lib/pending';
+import { allReminders } from '../lib/reminders';
 import { RolePolicy } from '../lib/rolePolicy';
 import { useStore } from '../store/store';
+
+const DOT: Record<'red' | 'amber' | 'green', string> = {
+  red: '#DC2626',
+  amber: '#F59E0B',
+  green: '#16A34A',
+};
 
 export function Dashboard() {
   const { role, files } = useStore();
@@ -18,6 +26,7 @@ export function Dashboard() {
 
   const open = files.filter((f) => deriveStatus(f) !== 'closed');
   const alerts = allAlerts(files);
+  const upcoming = allReminders(files, todayIso()).slice(0, 3);
   const docsPending = filesNeedingDocs(files).length;
   const payPending = filesNeedingPayments(files).length;
   const urgent = files.filter((f) => derivePriority(f) === 'urgent').length;
@@ -58,6 +67,41 @@ export function Dashboard() {
                 <div className="grid gap-2 sm:grid-cols-2">
                   {alerts.slice(0, 2).map((a, i) => (
                     <AlertCard key={i} alert={a} onClick={() => nav(`/files/${a.fileId}`)} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {upcoming.length > 0 && (
+              <section className="mb-5">
+                <div className="mb-2 flex items-center justify-between">
+                  <h2 className="font-display text-sm font-bold text-ink">Upcoming</h2>
+                  <button
+                    onClick={() => nav('/today')}
+                    className="inline-flex items-center gap-0.5 text-xs font-semibold text-blue hover:text-navy"
+                  >
+                    View all <ChevronRight size={14} />
+                  </button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {upcoming.map((r) => (
+                    <button
+                      key={`${r.kind}-${r.fileId}-${r.date}`}
+                      onClick={() => nav('/today')}
+                      className="flex items-center gap-3 rounded-card border border-border bg-white p-3 text-left shadow-card transition hover:border-navy"
+                    >
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: DOT[r.status] }}
+                        aria-hidden
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-bold text-blue">{r.fileNumber}</div>
+                        <div className="truncate text-[12px] text-muted">
+                          {r.kind === 'etd' ? 'Departure' : 'Arrival'} · {r.label}
+                        </div>
+                      </div>
+                    </button>
                   ))}
                 </div>
               </section>

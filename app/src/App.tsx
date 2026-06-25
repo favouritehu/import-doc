@@ -4,6 +4,8 @@ import { AppShell } from './components/AppShell';
 import { useStore } from './store/store';
 import { Welcome } from './screens/Welcome';
 import { Dashboard } from './screens/Dashboard';
+import { Today } from './screens/Today';
+import { Calendar } from './screens/Calendar';
 import { FilesList } from './screens/FilesList';
 import { CreateFile } from './screens/CreateFile';
 import { FileDetail } from './screens/FileDetail';
@@ -36,6 +38,8 @@ export default function App() {
         }
       >
         <Route path="/" element={<Dashboard />} />
+        <Route path="/today" element={<Today />} />
+        <Route path="/calendar" element={<Calendar />} />
         <Route path="/files" element={<FilesList />} />
         <Route path="/files/new" element={<CreateFile />} />
         <Route path="/files/:id" element={<FileDetail />} />

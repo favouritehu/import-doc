@@ -1,6 +1,6 @@
 import type { Role } from '../types';
 
-export type BadgeKey = 'pending-docs' | 'pending-payments' | 'alerts' | null;
+export type BadgeKey = 'today' | 'pending-docs' | 'pending-payments' | 'alerts' | null;
 
 export interface NavDef {
   key: string;
@@ -14,7 +14,9 @@ const ALL: Role[] = ['admin', 'import_manager', 'accountant'];
 
 /** Sidebar / role-aware navigation (§3). Order is the display order. */
 export const NAV: NavDef[] = [
+  { key: 'today', label: 'Today', path: '/today', roles: ALL, badge: 'today' },
   { key: 'home', label: 'Dashboard', path: '/', roles: ALL, badge: null },
+  { key: 'calendar', label: 'Calendar', path: '/calendar', roles: ALL, badge: null },
   { key: 'files', label: 'Files', path: '/files', roles: ALL, badge: null },
   { key: 'pending-docs', label: 'Pending Docs', path: '/pending-docs', roles: ['admin', 'import_manager'], badge: 'pending-docs' },
   { key: 'pending-payments', label: 'Pending Payments', path: '/pending-payments', roles: ['admin', 'accountant'], badge: 'pending-payments' },

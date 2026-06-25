@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { FileUp, Link2, Loader2, Lock, Pencil, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
+import { Check, FileUp, Link2, Loader2, Lock, Pencil, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
 import type { Currency, Doc, ImportFile, Incoterm, Invoice, Mode, PaymentType, Priority, User } from '../types';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
 import { Button } from '../components/Button';
 import { PriorityBadge, StatusBadge } from '../components/Badge';
 import { ProgressStepper } from '../components/ProgressStepper';
+import { ShipmentTimeline } from '../components/ShipmentTimeline';
 import { DocumentChecklist, type DocGroup } from '../components/DocumentChecklist';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { PaymentCard } from '../components/PaymentCard';
@@ -126,6 +127,10 @@ export function FileDetail() {
 
           <div className="mt-4 border-t border-border pt-3">
             <ProgressStepper currentStatus={status} />
+          </div>
+
+          <div className="mt-4 border-t border-border pt-3">
+            <ShipmentTimeline file={file} variant="detail" />
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -572,7 +577,7 @@ function AddInvoiceModal({
   );
 }
 
-function L({ label, children }: { label: string; children: React.ReactNode }) {
+function L({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-semibold text-muted">{label}</span>
@@ -599,6 +604,7 @@ function EditFileModal({
     blAwb: file.blAwb,
     portLoading: file.portLoading,
     portArrival: file.portArrival,
+    etd: file.etd ?? '',
     eta: file.eta,
     shippingLine: file.shippingLine,
     forwarder: file.forwarder,
@@ -629,7 +635,7 @@ function EditFileModal({
           </Button>
           <Button
             onClick={() => {
-              onSave({ ...f, boeNumber: f.boeNumber.trim() || null });
+              onSave({ ...f, etd: f.etd.trim() || undefined, boeNumber: f.boeNumber.trim() || null });
               onClose();
             }}
           >
@@ -663,6 +669,20 @@ function EditFileModal({
         </L>
         <L label="Port of arrival">
           <input value={f.portArrival} onChange={(e) => set({ portArrival: e.target.value })} className={inputCls} />
+        </L>
+        <L
+          label={
+            <span className="inline-flex items-center gap-1.5">
+              ETD (departure)
+              {f.etd.trim() && (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-green/10 px-1.5 py-px text-[10px] font-bold text-green">
+                  <Check size={10} /> set
+                </span>
+              )}
+            </span>
+          }
+        >
+          <input type="date" value={f.etd} onChange={(e) => set({ etd: e.target.value })} className={inputCls} />
         </L>
         <L label="ETA">
           <input value={f.eta} onChange={(e) => set({ eta: e.target.value })} className={inputCls} placeholder="e.g. 28 Jul 2026" />

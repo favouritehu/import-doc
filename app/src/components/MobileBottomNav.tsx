@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, FolderOpen, LayoutDashboard, MoreHorizontal, Plus } from 'lucide-react';
+import { Bell, CalendarCheck, FolderOpen, LayoutDashboard, MoreHorizontal, Plus } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { navBadges } from '../lib/pending';
 import { useStore } from '../store/store';
@@ -30,6 +30,7 @@ export function MobileBottomNav() {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 flex items-end border-t border-border bg-white px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-1.5 md:hidden">
+      {item('/today', 'Today', CalendarCheck, badges.today)}
       {item('/', 'Home', LayoutDashboard)}
       {item('/files', 'Files', FolderOpen)}
       <div className="flex flex-1 justify-center">

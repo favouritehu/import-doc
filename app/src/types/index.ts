@@ -129,7 +129,8 @@ export interface ImportFile {
   blAwb: string;
   portLoading: string;
   portArrival: string;
-  eta: string;
+  etd?: string; // departure date, ISO YYYY-MM-DD (optional)
+  eta: string; // arrival date; ISO going forward, legacy values parsed leniently
   etaDays: number;
   arrivedOn: string | null;
   shippingLine: string;

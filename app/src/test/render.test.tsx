@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { StoreProvider } from '../store/store';
 import { SEED_FILES } from '../data/seed';
 import { Dashboard } from '../screens/Dashboard';
+import { Today } from '../screens/Today';
 import { FilesList } from '../screens/FilesList';
 import { FileDetail } from '../screens/FileDetail';
 
@@ -24,6 +25,12 @@ describe('screens render with seed data (no runtime throw)', () => {
     expect(html).toContain('Dashboard');
     expect(html).toContain('IMP-25-0001');
     expect(html).toContain('Demurrage risk');
+  });
+
+  it('Today surfaces due items merged across files', () => {
+    const html = render(<Today />, '/today');
+    expect(html).toContain('Today');
+    expect(html).toContain('IMP-25-0001'); // seed file with a demurrage/eta row
   });
 
   it('FilesList lists seeded suppliers', () => {

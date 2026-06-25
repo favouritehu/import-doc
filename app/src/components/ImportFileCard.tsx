@@ -4,6 +4,7 @@ import { derivePriority, deriveStatus, responsibleOf } from '../lib/derive';
 import { fileValueInr, inr } from '../lib/format';
 import { PriorityBadge, StatusBadge } from './Badge';
 import { ProgressBar } from './ProgressStepper';
+import { ShipmentTimeline } from './ShipmentTimeline';
 
 export function ImportFileCard({
   file,
@@ -90,6 +91,10 @@ export function ImportFileCard({
             )}
           </div>
         ))}
+      </div>
+
+      <div className="mt-3">
+        <ShipmentTimeline file={file} variant="card" />
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2">

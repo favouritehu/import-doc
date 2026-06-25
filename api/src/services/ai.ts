@@ -159,6 +159,7 @@ export interface ExtractResult {
     blAwb: string;
     portLoading: string;
     portArrival: string;
+    etd: string;
     eta: string;
     shippingLine: string;
     forwarder: string;
@@ -191,6 +192,7 @@ function coerceExtract(raw: any): ExtractResult {
       blAwb: str(f.blAwb ?? f.bl ?? f.awb ?? f.blNumber),
       portLoading: str(f.portLoading ?? f.pol),
       portArrival: str(f.portArrival ?? f.poa ?? f.destination),
+      etd: str(f.etd ?? f.departure ?? f.etdDate),
       eta: str(f.eta),
       shippingLine: str(f.shippingLine ?? f.carrier),
       forwarder: str(f.forwarder),
@@ -203,7 +205,7 @@ function coerceExtract(raw: any): ExtractResult {
 // ── Public tasks ──────────────────────────────────────────────────────
 
 const EXTRACT_PROMPT = `You read import shipping documents (commercial invoices, proforma invoices, packing lists, bills of lading). Extract structured data and OUTPUT JSON ONLY in this exact shape:
-{"file":{"country":"","mode":"sea|air","incoterm":"FOB|CIF|CFR|EXW|DAP|OTHER","blAwb":"","portLoading":"","portArrival":"","eta":"","shippingLine":"","forwarder":"","cha":""},
+{"file":{"country":"","mode":"sea|air","incoterm":"FOB|CIF|CFR|EXW|DAP|OTHER","blAwb":"","portLoading":"","portArrival":"","etd":"","eta":"","shippingLine":"","forwarder":"","cha":""},
  "invoices":[{"supplier":"","invoiceNumber":"","invoiceDate":"","product":"","qty":"","weight":"","hsn":"","amount":0,"currency":"USD|EUR|CNY|INR"}]}
 Rules: One file may contain SEVERAL invoices (possibly from different suppliers) — return each as a separate item in "invoices". amount is a number (no symbols/commas). "weight" is the gross (or net) weight WITH its unit, e.g. "1,250 kg" — empty if absent. Use empty string for unknown fields. Translate Chinese field values to English where natural, but keep supplier names and invoice numbers verbatim. Do not invent values.`;
 

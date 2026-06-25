@@ -65,6 +65,7 @@ export interface ExtractResult {
     blAwb: string;
     portLoading: string;
     portArrival: string;
+    etd: string;
     eta: string;
     shippingLine: string;
     forwarder: string;

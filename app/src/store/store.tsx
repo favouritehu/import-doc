@@ -98,6 +98,7 @@ export interface BlankInput {
   blAwb: string;
   portLoading: string;
   portArrival: string;
+  etd?: string;
   eta: string;
   etaDays: number;
   shippingLine: string;
@@ -663,6 +664,7 @@ export function StoreProvider({
         blAwb: input.blAwb,
         portLoading: input.portLoading,
         portArrival: input.portArrival,
+        etd: input.etd?.trim() || undefined,
         eta: input.eta,
         etaDays: input.etaDays,
         arrivedOn: null,
