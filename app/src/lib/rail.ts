@@ -7,6 +7,7 @@ import type { ImportFile } from '../types';
 import { deriveStatus } from './derive';
 import { daysBetween } from './dates';
 import { supplierLabel } from './format';
+import { statusMeta } from './docs';
 
 export type RailStatus = 'red' | 'amber' | 'green' | 'none';
 
@@ -16,6 +17,7 @@ export interface RailItem {
   party: string;
   status: RailStatus;
   line: string; // arrival tracking, e.g. "Arrives in 12 days" / "Overdue 3 days"
+  chip: { label: string; bg: string; fg: string }; // derived status pill (statusMeta)
 }
 
 /** Arrival is urgent (red) once the container is this many days away or closer. */
@@ -50,7 +52,8 @@ export function railItem(f: ImportFile, today: string): RailItem {
     status = 'green';
     line = `Arrives in ${d} days`;
   }
-  return { ...base, status, line };
+  const meta = statusMeta[deriveStatus(f)];
+  return { ...base, status, line, chip: { label: meta.label, bg: meta.bg, fg: meta.fg } };
 }
 
 /** Rail rows: urgent arrivals (red) first, then safe (green), then no-date; newest first. */

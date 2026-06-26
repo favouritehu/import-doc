@@ -81,30 +81,49 @@ function PartiesRail({
             <p className="text-xs">No imports match.</p>
           </div>
         ) : (
-          shown.map((it) => (
-            <button
-              key={it.fileId}
-              onClick={() => onSelect(it.fileId)}
-              className={`flex w-full items-center gap-2.5 border-b border-border/60 px-3 py-2.5 text-left transition ${
-                it.fileId === selectedId ? 'border-l-2 border-l-navy bg-navy/5' : 'hover:bg-page'
-              }`}
-            >
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: DOT[it.status] }}
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold text-ink">{it.party}</span>
-                <span className="block truncate text-[11px]">
-                  <span className="text-faint">{it.fileNumber} · </span>
-                  <span className="font-semibold" style={{ color: LINE[it.status] }}>
-                    {it.line}
+          shown.map((it) => {
+            const selected = it.fileId === selectedId;
+            return (
+              <button
+                key={it.fileId}
+                onClick={() => onSelect(it.fileId)}
+                className={`relative mb-[3px] flex w-full gap-2.5 rounded-[11px] px-3 py-2.5 text-left transition ${
+                  selected ? 'bg-page' : 'hover:bg-page'
+                }`}
+              >
+                {selected && (
+                  <span
+                    className="absolute bottom-3.5 left-0 top-3.5 w-[3px] rounded-full"
+                    style={{ backgroundColor: DOT[it.status] === '#CBD5E1' ? '#0E1726' : DOT[it.status] }}
+                    aria-hidden
+                  />
+                )}
+                <span
+                  className="mt-1 h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: DOT[it.status] }}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-semibold text-ink">{it.party}</span>
+                  <span className="mt-1 flex items-center gap-1.5 text-[11px]">
+                    <span className="font-mono text-faint">{it.fileNumber}</span>
+                    <span className="text-divider">·</span>
+                    <span className="truncate font-semibold" style={{ color: LINE[it.status] }}>
+                      {it.line}
+                    </span>
+                  </span>
+                  <span className="mt-1.5 block">
+                    <span
+                      className="inline-block rounded-md px-2 py-0.5 text-[10.5px] font-bold"
+                      style={{ backgroundColor: it.chip.bg, color: it.chip.fg }}
+                    >
+                      {it.chip.label}
+                    </span>
                   </span>
                 </span>
-              </span>
-            </button>
-          ))
+              </button>
+            );
+          })
         )}
       </div>
     </div>
