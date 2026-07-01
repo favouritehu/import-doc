@@ -1,0 +1,42 @@
+// Import-file aggregate repo. The API is a dumb JSONB store — the app owns the
+// ImportFile shape; here a file is just an object with a numeric `id`. Newest
+// first (higher id = newer). All calls throw DbNotConfigured when DATABASE_URL is
+// unset (routes -> 503 -> app falls back to IndexedDB).
+
+import { query, withTx } from '../db';
+
+export type StoredFile = { id: number } & Record<string, unknown>;
+
+export async function listFiles(): Promise<StoredFile[]> {
+  const { rows } = await query<{ data: StoredFile }>('SELECT data FROM import_files ORDER BY id DESC');
+  return rows.map((r) => r.data);
+}
+
+export async function upsertFile(file: StoredFile): Promise<void> {
+  if (typeof file?.id !== 'number') throw new Error('file.id must be a number');
+  await query(
+    `INSERT INTO import_files (id, data, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+    [file.id, JSON.stringify(file)],
+  );
+}
+
+export async function deleteFile(id: number): Promise<void> {
+  await query('DELETE FROM import_files WHERE id = $1', [id]);
+}
+
+/** Bulk upsert (used by "import my local data"). One transaction, no deletes. */
+export async function upsertMany(files: StoredFile[]): Promise<number> {
+  const valid = files.filter((f) => typeof f?.id === 'number');
+  if (valid.length === 0) return 0;
+  await withTx(async (q) => {
+    for (const f of valid) {
+      await q(
+        `INSERT INTO import_files (id, data, updated_at) VALUES ($1, $2, now())
+         ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+        [f.id, JSON.stringify(f)],
+      );
+    }
+  });
+  return valid.length;
+}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, LogOut, RotateCcw, Trash2 } from 'lucide-react';
+import { AlertTriangle, Cloud, CloudOff, LogOut, RotateCcw, Trash2, UploadCloud, Loader2 } from 'lucide-react';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
 import { FilterTabs } from '../components/FilterTabs';
@@ -13,11 +13,25 @@ import { useStore } from '../store/store';
 import type { Role } from '../types';
 
 export function Settings() {
-  const { role, user, users, showToast, signOut, clearAll, resetDemo, addUser, removeUser } = useStore();
+  const { role, user, users, files, serverMode, syncLocalToServer, showToast, signOut, clearAll, resetDemo, addUser, removeUser } =
+    useStore();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const [confirm, setConfirm] = useState<'clear' | 'reset' | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [pushing, setPushing] = useState(false);
+
+  async function pushLocal() {
+    if (pushing) return;
+    setPushing(true);
+    try {
+      await syncLocalToServer();
+    } catch {
+      showToast('Could not reach the server — try again');
+    } finally {
+      setPushing(false);
+    }
+  }
   const tab = params.get('tab') ?? 'users';
   const canHsn = RolePolicy.canSeeHsn(role);
   const isAdmin = role === 'admin';
@@ -129,6 +143,37 @@ export function Settings() {
         </div>
 
         {isAdmin && (
+          <div className="mt-5 rounded-card border border-border bg-white p-4 shadow-card">
+            <div className="flex items-center gap-2 text-ink">
+              {serverMode ? <Cloud size={16} className="text-green" /> : <CloudOff size={16} className="text-faint" />}
+              <h3 className="font-display text-sm font-bold">Shared data</h3>
+            </div>
+            {serverMode ? (
+              <>
+                <p className="mt-1 text-xs text-muted">
+                  Connected to the shared server — everyone with the team password sees the same import
+                  files. Reload to pull the latest edits from others.
+                </p>
+                <p className="mt-2 text-xs text-muted">
+                  Got files that only exist in this browser? Send them up once:
+                </p>
+                <div className="mt-3">
+                  <Button variant="ghost" onClick={pushLocal} disabled={pushing || files.length === 0}>
+                    {pushing ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
+                    {pushing ? 'Sending…' : `Send this browser's ${files.length} file${files.length === 1 ? '' : 's'} to the server`}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="mt-1 text-xs text-muted">
+                Running on this browser only — the shared server has no database or is unreachable, so
+                data is not shared yet. It syncs automatically once the server is connected.
+              </p>
+            )}
+          </div>
+        )}
+
+        {isAdmin && !serverMode && (
           <div className="mt-5 rounded-card border border-red/30 bg-red/5 p-4">
             <div className="flex items-center gap-2 text-red">
               <AlertTriangle size={16} />

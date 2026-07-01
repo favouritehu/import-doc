@@ -33,6 +33,8 @@ import { APPROX_INR_RATE } from '../lib/format';
 import { CHA_STEPS, docLabel } from '../lib/docs';
 import { isRequired } from '../lib/derive';
 import { idbGet, idbSet } from '../lib/idb';
+import { diffFiles, reconcileBaseline } from '../lib/sync';
+import { listFiles, runSyncPlan, importFiles, ApiError, clearToken } from '../lib/api';
 
 // When mode/incoterm change, keep uploads but fix each doc's required flag and
 // swap bill_of_lading <-> awb for the new mode.
@@ -131,6 +133,8 @@ interface Store {
   role: Role;
   user: User | null;
   ready: boolean;
+  /** true when files are backed by the shared server (Postgres); false = per-browser IndexedDB. */
+  serverMode: boolean;
   files: ImportFile[];
   toast: string | null;
   setRole: (r: Role) => void;
@@ -155,6 +159,8 @@ interface Store {
   updateFile: (fileId: number, patch: Partial<ImportFile>) => void;
   clearAll: () => void;
   resetDemo: () => void;
+  /** Push the current in-browser files onto the shared server (explicit, not automatic). */
+  syncLocalToServer: () => Promise<number>;
   users: User[];
   addUser: (input: { name: string; email: string; role: Role }) => void;
   removeUser: (id: number) => void;
@@ -194,10 +200,16 @@ export function StoreProvider({
   // files load in the hydrate effect below; demo is opt-in via Settings → reset.
   const [files, setFiles] = useState<ImportFile[]>(initialFiles ?? []);
   const [ready, setReady] = useState(false);
-  // Persist guard: stays false until IndexedDB hydration SUCCEEDS. The persist
-  // effect refuses to write while false, so a failed/slow load can never
-  // overwrite stored files with the empty initial array (the data-loss bug).
+  const [serverMode, setServerMode] = useState(false);
+  // Persist guard: stays false until hydration SUCCEEDS (from server OR IndexedDB).
+  // The persist effect refuses to write while false, so a failed/slow load can
+  // never overwrite stored files with the empty initial array (the data-loss bug).
   const loaded = useRef(false);
+  // Sync baseline = last file state known to match the server. Diff against it to
+  // find the minimal PUT/DELETE set; advance only for files that synced OK.
+  const baseline = useRef<ImportFile[]>([]);
+  // 'server' = shared Postgres; 'local' = per-browser IndexedDB (no DB / API down).
+  const mode = useRef<'server' | 'local'>('local');
   const [users, setUsers] = useState<User[]>(() => loadUsers());
   const [toast, setToast] = useState<string | null>(null);
 
@@ -232,7 +244,11 @@ export function StoreProvider({
     window.setTimeout(() => setToast((cur) => (cur === m ? null : cur)), 1900);
   }, []);
 
-  // Hydrate files from IndexedDB once on startup (undefined => first run => demo).
+  // Hydrate on startup. Prefer the shared server; fall back to IndexedDB when the
+  // server has no DB (503) or is unreachable. CRITICAL ordering (else the wipe-race
+  // returns): set `baseline` and `files` FIRST, flip `loaded` LAST — the persist
+  // effect is guarded on `loaded`, so it can't diff `[] -> serverFiles` and delete
+  // rows before the real state is in place.
   useEffect(() => {
     let alive = true;
     try {
@@ -240,28 +256,69 @@ export function StoreProvider({
     } catch {
       /* ignore */
     }
-    idbGet<ImportFile[]>(FILES_IDB_KEY)
-      .then((saved) => {
+    if (initialFiles) {
+      // Test-only injected seed — no I/O.
+      baseline.current = initialFiles;
+      loaded.current = true;
+      setReady(true);
+      return;
+    }
+    (async () => {
+      try {
+        const server = await listFiles();
         if (!alive) return;
-        setFiles(saved ?? []); // fresh install starts empty (demo via Settings → Reset to demo)
-        loaded.current = true; // only now may the persist effect write to IDB
-        setReady(true);
-      })
-      .catch(() => {
-        // Load failed — keep loaded=false so we NEVER overwrite stored files
-        // with the empty array. UI proceeds; next reload retries the load.
-        if (alive) setReady(true);
-      });
+        setFiles(server);
+        baseline.current = server;
+        mode.current = 'server';
+        setServerMode(true);
+        idbSet(FILES_IDB_KEY, server).catch(() => {}); // seed the offline cache
+      } catch (e) {
+        if (e instanceof ApiError && e.kind === 'unauthorized') {
+          // Token stale/expired — drop it so the App-level gate shows the login.
+          clearToken();
+          if (alive) window.location.reload();
+          return;
+        }
+        // 503 (no DB) or network — per-browser IndexedDB fallback.
+        const saved = await idbGet<ImportFile[]>(FILES_IDB_KEY).catch(() => undefined);
+        if (!alive) return;
+        setFiles(saved ?? []);
+        baseline.current = saved ?? [];
+        mode.current = 'local';
+        setServerMode(false);
+      } finally {
+        if (alive) {
+          loaded.current = true; // only now may the persist effect run
+          setReady(true);
+        }
+      }
+    })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [initialFiles]);
 
-  // Persist files (incl. uploaded files as data URLs) to IndexedDB on change.
-  // Guarded by loaded.current (not just ready) so a failed hydrate can't wipe IDB.
+  // Persist on change. Write-through to IndexedDB in BOTH modes (offline cache +
+  // fallback so a server outage next session shows the last good copy). In server
+  // mode also diff-sync the minimal PUT/DELETE set, debounced to coalesce bursts.
+  // Guarded by loaded.current so a failed hydrate can't wipe anything.
   useEffect(() => {
     if (!ready || !loaded.current) return;
     idbSet(FILES_IDB_KEY, files).catch(() => showToast('Could not save — storage error'));
+    if (mode.current !== 'server') return;
+
+    const plan = diffFiles(baseline.current, files);
+    if (plan.upserts.length === 0 && plan.deletes.length === 0) return;
+    const snapshot = files;
+    const t = window.setTimeout(() => {
+      runSyncPlan(plan).then((failed) => {
+        baseline.current = reconcileBaseline(baseline.current, snapshot, failed);
+        if (failed.upserts.length || failed.deletes.length) {
+          showToast('Some changes not saved to server — will retry');
+        }
+      });
+    }, 400);
+    return () => window.clearTimeout(t);
   }, [files, ready, showToast]);
 
   useEffect(() => {
@@ -294,6 +351,18 @@ export function StoreProvider({
     setUsers(structuredClone(USERS));
     showToast('Demo data restored');
   }, [showToast]);
+
+  // Explicit one-shot: push what's in THIS browser onto the shared server. Never
+  // automatic (the first browser to load must not silently strand everyone else's
+  // local edits). After it succeeds we switch this browser into server mode.
+  const syncLocalToServer = useCallback(async (): Promise<number> => {
+    const n = await importFiles(files);
+    baseline.current = files;
+    mode.current = 'server';
+    setServerMode(true);
+    showToast(`Sent ${n} file${n === 1 ? '' : 's'} to the shared server`);
+    return n;
+  }, [files, showToast]);
 
   const addUser = useCallback(
     (input: { name: string; email: string; role: Role }) => {
@@ -695,6 +764,7 @@ export function StoreProvider({
       role,
       user,
       ready,
+      serverMode,
       files,
       toast,
       setRole,
@@ -719,6 +789,7 @@ export function StoreProvider({
       updateFile,
       clearAll,
       resetDemo,
+      syncLocalToServer,
       users,
       addUser,
       removeUser,
@@ -732,6 +803,7 @@ export function StoreProvider({
       role,
       user,
       ready,
+      serverMode,
       files,
       toast,
       signIn,
@@ -753,6 +825,7 @@ export function StoreProvider({
       updateFile,
       clearAll,
       resetDemo,
+      syncLocalToServer,
       users,
       addUser,
       removeUser,

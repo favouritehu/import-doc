@@ -3,6 +3,7 @@
 // is down or unconfigured.
 
 import type { Currency } from '../types';
+import { authHeader } from './api';
 
 const API = ((import.meta.env.VITE_API_URL as string) || 'http://localhost:8787').replace(/\/$/, '');
 
@@ -20,11 +21,14 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   try {
     res = await fetch(`${API}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...authHeader() },
       body: JSON.stringify(body),
     });
   } catch {
     throw new AiError('Cannot reach the AI service. Start it with `cd api && npm run dev`.', false);
+  }
+  if (res.status === 401) {
+    throw new AiError('Session expired — sign in again.', false);
   }
   if (res.status === 503) {
     throw new AiError('AI not configured — set GEMINI_API_KEY in api/.env and restart the API.', false);

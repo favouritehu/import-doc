@@ -1,23 +1,27 @@
-# Import Desk — one-click stack.
+# Import Desk — one-click stack (Phase B: shared data).
 #
-#   Phase A (what's built today):   docker compose up -d --build
-#       → web (static SPA) + api (Fastify, AI features). Data lives in the
-#         browser; no database needed.
+#   docker compose up -d --build
+#     → web (static SPA + /api proxy) + api (Fastify: AI + shared-data CRUD).
 #
-#   Phase B (when the API CRUD lands): docker compose --profile full up -d --build
-#       → also starts MySQL (schema auto-loaded from db/schema.sql).
+# Data: set DATABASE_URL to a Postgres and the app shares files across everyone;
+# leave it blank and each browser keeps its own copy (IndexedDB). Auth: set
+# APP_PASSWORD to gate the whole app behind one shared password; leave blank = open.
 #
-# On Coolify: add a "Docker Compose" resource pointing at this repo, set the
-# env vars below in the Coolify UI, and map a domain to `web` and `api`.
-# Coolify's Traefik handles HTTPS. Copy .env.example → .env for local runs.
+# Same-origin: the browser only ever talks to the WEB service; nginx proxies
+# /api/* to the api container. So there's one public domain and no CORS, and
+# VITE_API_URL is just "/api" (nothing domain-specific baked into the build).
+#
+# On Coolify: add a "Docker Compose" resource pointing at this repo, set the env
+# below in the UI, map ONE domain to `web`, and join the api to the same network as
+# your Postgres. Copy .env.example → .env for local runs.
 
 services:
   web:
     build:
       context: ./app
       args:
-        # Baked into the bundle at build time — set to the PUBLIC api URL in prod.
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8787}
+        # Same-origin — relative path, so no domain is baked into the bundle.
+        VITE_API_URL: ${VITE_API_URL:-/api}
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-8080}:80"
@@ -28,9 +32,20 @@ services:
     build:
       context: ./api
     restart: unless-stopped
+    # Internal only — the web service reaches it at http://api:8787 via the proxy.
+    expose:
+      - "8787"
     environment:
       PORT: 8787
+      # Same-origin in prod, so CORS is irrelevant; keep permissive for direct/dev use.
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      # Shared data (Postgres). Blank => app runs per-browser (IndexedDB).
+      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_SSL: ${DATABASE_SSL:-}
+      # Shared-password gate. Blank => open (no login).
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      APP_SECRET: ${APP_SECRET:-}
+      # AI providers (server-side only — never reach the browser).
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
@@ -38,28 +53,3 @@ services:
       AI_TEXT_PROVIDER: ${AI_TEXT_PROVIDER:-auto}
       N8N_REMINDER_WEBHOOK: ${N8N_REMINDER_WEBHOOK:-}
       APP_URL: ${APP_URL:-}
-      # Phase B (ignored until the API uses MySQL):
-      MYSQL_HOST: db
-      MYSQL_PORT: 3306
-      MYSQL_USER: ${MYSQL_USER:-import_desk}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-import_desk}
-    ports:
-      - "${API_PORT:-8787}:8787"
-
-  # Phase B database — opt-in. Not started in Phase A (profile gate).
-  db:
-    image: mysql:8.0
-    profiles: ["full"]
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-import_desk}
-      MYSQL_USER: ${MYSQL_USER:-import_desk}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
-    volumes:
-      - import_desk_db:/var/lib/mysql
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-
-volumes:
-  import_desk_db:

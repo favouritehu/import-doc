@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { buildServer } from './server';
 
-const PORT = Number(process.env.PORT ?? 8080);
+const PORT = Number(process.env.PORT ?? 8787);
 
 buildServer()
   .then((app) => app.listen({ port: PORT, host: '0.0.0.0' }))
