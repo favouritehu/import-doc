@@ -388,6 +388,10 @@ export function StoreProvider({
       reided.push({ ...f, id, fileNumber: fileNo(id) });
     }
     await importFiles(reided);
+    // Idempotency guard: the moment the import commits, empty the local store so a
+    // double-click or a retry after a post-import network blip reads "nothing to
+    // send" instead of importing the same files again under new ids (duplicates).
+    await idbSet(FILES_IDB_KEY, []).catch(() => {});
     const server = await listFiles();
     setFiles(server);
     baseline.current = server;
