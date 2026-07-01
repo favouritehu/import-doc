@@ -13,7 +13,7 @@ import { useStore } from '../store/store';
 import type { Role } from '../types';
 
 export function Settings() {
-  const { role, user, users, files, serverMode, syncLocalToServer, showToast, signOut, clearAll, resetDemo, addUser, removeUser } =
+  const { role, user, users, serverMode, syncLocalToServer, showToast, signOut, clearAll, resetDemo, addUser, removeUser } =
     useStore();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -155,12 +155,13 @@ export function Settings() {
                   files. Reload to pull the latest edits from others.
                 </p>
                 <p className="mt-2 text-xs text-muted">
-                  Got files that only exist in this browser? Send them up once:
+                  Got files that only exist in this browser (from before it was shared)? Send them up
+                  once — they get fresh ids so they can't overwrite anyone else's:
                 </p>
                 <div className="mt-3">
-                  <Button variant="ghost" onClick={pushLocal} disabled={pushing || files.length === 0}>
+                  <Button variant="ghost" onClick={pushLocal} disabled={pushing}>
                     {pushing ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
-                    {pushing ? 'Sending…' : `Send this browser's ${files.length} file${files.length === 1 ? '' : 's'} to the server`}
+                    {pushing ? 'Sending…' : "Send this browser's local files to the server"}
                   </Button>
                 </div>
               </>

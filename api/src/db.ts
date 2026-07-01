@@ -45,6 +45,10 @@ export async function ensureSchema(): Promise<void> {
       data       JSONB NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    -- Server-assigned ids so parallel creators never collide (client max+1 would
+    -- give everyone id=1 on an empty DB). Every id — new files AND imported local
+    -- data — is drawn from here, so it's the single monotonic source of truth.
+    CREATE SEQUENCE IF NOT EXISTS import_files_id_seq;
   `);
   ensured = true;
 }

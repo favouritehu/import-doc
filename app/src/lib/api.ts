@@ -90,6 +90,13 @@ export async function listFiles(): Promise<ImportFile[]> {
   return j.files ?? [];
 }
 
+/** Reserve a server-assigned unique id for a new file (collision-free across users). */
+export async function reserveId(): Promise<number> {
+  const res = await req('/files/reserve', { method: 'POST' });
+  const j = (await res.json()) as { id: number };
+  return j.id;
+}
+
 export async function putFile(f: ImportFile): Promise<void> {
   await req(`/files/${f.id}`, { method: 'PUT', body: JSON.stringify(f) });
 }

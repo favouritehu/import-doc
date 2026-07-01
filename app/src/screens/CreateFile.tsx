@@ -102,9 +102,9 @@ export function CreateFile() {
           <TemplateConfirm
             tplId={tplId}
             onBack={() => setView('pick')}
-            onCreate={(input) => {
+            onCreate={async (input) => {
               const tpl = TEMPLATES.find((t) => t.id === tplId)!;
-              const id = createFromTemplate({ templateId: tplId, ...input }, tpl);
+              const id = await createFromTemplate({ templateId: tplId, ...input }, tpl);
               nav(`/files/${id}`);
             }}
           />
@@ -113,8 +113,8 @@ export function CreateFile() {
           <BlankWizard
             users={users}
             onBack={() => setView('pick')}
-            onCreate={(input) => {
-              const id = createBlank(input);
+            onCreate={async (input) => {
+              const id = await createBlank(input);
               nav(`/files/${id}`);
             }}
           />
@@ -123,8 +123,8 @@ export function CreateFile() {
           <AiExtractView
             users={users}
             onBack={() => setView('pick')}
-            onCreate={(input) => {
-              const id = createBlank(input);
+            onCreate={async (input) => {
+              const id = await createBlank(input);
               nav(`/files/${id}`);
             }}
           />
@@ -748,7 +748,7 @@ function QuickStartView({
 }: {
   users: User[];
   onBack: () => void;
-  onCreate: (i: BlankInput) => number;
+  onCreate: (i: BlankInput) => Promise<number>;
   onAttachPi: (id: number, fileName: string, fileUrl: string) => void;
   onDone: (id: number) => void;
 }) {
@@ -764,9 +764,9 @@ function QuickStartView({
   const [pi, setPi] = useState<File | null>(null);
   const valid = supplier.trim().length > 1;
 
-  const create = () => {
+  const create = async () => {
     if (valid === false) return;
-    const id = onCreate({
+    const id = await onCreate({
       country,
       mode,
       incoterm,

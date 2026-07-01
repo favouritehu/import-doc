@@ -34,7 +34,7 @@ import { CHA_STEPS, docLabel } from '../lib/docs';
 import { isRequired } from '../lib/derive';
 import { idbGet, idbSet } from '../lib/idb';
 import { diffFiles, reconcileBaseline } from '../lib/sync';
-import { listFiles, runSyncPlan, importFiles, ApiError, clearToken } from '../lib/api';
+import { listFiles, runSyncPlan, importFiles, reserveId, ApiError, clearToken } from '../lib/api';
 
 // When mode/incoterm change, keep uploads but fix each doc's required flag and
 // swap bill_of_lading <-> awb for the new mode.
@@ -75,11 +75,16 @@ function loadUsers(): User[] {
 }
 
 // Files (which may carry multi-MB uploaded documents) live in IndexedDB, not the
-// ~5MB localStorage. Key in the idb kv store:
+// ~5MB localStorage. Two keys so server mode never clobbers pre-existing local
+// data: FILES_IDB_KEY is this browser's own store (Phase-A data, and the source
+// for "import my local data"); SERVER_CACHE_KEY is the offline mirror of the
+// shared server. Server mode writes ONLY the cache key, so the primary local copy
+// survives the first (empty-server) load and stays importable.
 const FILES_IDB_KEY = 'files';
+const SERVER_CACHE_KEY = 'files-server-cache';
 
-// Next file id / number derived from current files (persistence-safe — no stale
-// module counter that would collide with reloaded data).
+// Local-mode id / file number. In server mode ids are assigned by the server (a
+// monotonic sequence) so parallel creators never collide on id=1.
 const nextId = (fs: ImportFile[]): number => fs.reduce((m, f) => Math.max(m, f.id), 0) + 1;
 const fileNo = (id: number): string => `IMP-25-${String(id).padStart(4, '0')}`;
 
@@ -143,8 +148,8 @@ interface Store {
   showToast: (m: string) => void;
   getFile: (id: number) => ImportFile | undefined;
   getFileByNumber: (n: string) => ImportFile | undefined;
-  createFromTemplate: (input: CreateFromTemplateInput, tpl: TemplateLike) => number;
-  createBlank: (input: BlankInput) => number;
+  createFromTemplate: (input: CreateFromTemplateInput, tpl: TemplateLike) => Promise<number>;
+  createBlank: (input: BlankInput) => Promise<number>;
   addInvoice: (fileId: number, draft: InvoiceDraft) => void;
   updateInvoice: (fileId: number, invId: string, patch: Partial<Invoice>) => void;
   removeInvoice: (fileId: number, invId: string) => void;
@@ -271,7 +276,9 @@ export function StoreProvider({
         baseline.current = server;
         mode.current = 'server';
         setServerMode(true);
-        idbSet(FILES_IDB_KEY, server).catch(() => {}); // seed the offline cache
+        // Mirror to the CACHE key only — never the primary local store, so an empty
+        // server can't wipe this browser's Phase-A data before the user imports it.
+        idbSet(SERVER_CACHE_KEY, server).catch(() => {});
       } catch (e) {
         if (e instanceof ApiError && e.kind === 'unauthorized') {
           // Token stale/expired — drop it so the App-level gate shows the login.
@@ -279,16 +286,24 @@ export function StoreProvider({
           if (alive) window.location.reload();
           return;
         }
-        // 503 (no DB) or network — per-browser IndexedDB fallback.
-        const saved = await idbGet<ImportFile[]>(FILES_IDB_KEY).catch(() => undefined);
+        // 503 (no DB) or network — offline. Prefer the server cache (last shared
+        // state) if we have one, else this browser's own local store.
+        const cache = await idbGet<ImportFile[]>(SERVER_CACHE_KEY).catch(() => undefined);
+        const local = await idbGet<ImportFile[]>(FILES_IDB_KEY).catch(() => undefined);
+        const saved = cache ?? local ?? [];
         if (!alive) return;
-        setFiles(saved ?? []);
-        baseline.current = saved ?? [];
+        setFiles(saved);
+        baseline.current = saved;
         mode.current = 'local';
         setServerMode(false);
       } finally {
         if (alive) {
-          loaded.current = true; // only now may the persist effect run
+          // CRITICAL: flip `loaded` LAST. setFiles/baseline above run in this same
+          // async continuation (React 18 batches), so the persist effect never sees
+          // an empty [] against a populated baseline. Do NOT insert an `await`
+          // between the setFiles/baseline assignments and here — that reopens the
+          // wipe-race.
+          loaded.current = true;
           setReady(true);
         }
       }
@@ -304,7 +319,10 @@ export function StoreProvider({
   // Guarded by loaded.current so a failed hydrate can't wipe anything.
   useEffect(() => {
     if (!ready || !loaded.current) return;
-    idbSet(FILES_IDB_KEY, files).catch(() => showToast('Could not save — storage error'));
+    // Server mode caches to SERVER_CACHE_KEY; local mode owns FILES_IDB_KEY. Keeping
+    // them separate is what lets "import my local data" still find the original copy.
+    const key = mode.current === 'server' ? SERVER_CACHE_KEY : FILES_IDB_KEY;
+    idbSet(key, files).catch(() => showToast('Could not save — storage error'));
     if (mode.current !== 'server') return;
 
     const plan = diffFiles(baseline.current, files);
@@ -352,17 +370,33 @@ export function StoreProvider({
     showToast('Demo data restored');
   }, [showToast]);
 
-  // Explicit one-shot: push what's in THIS browser onto the shared server. Never
-  // automatic (the first browser to load must not silently strand everyone else's
-  // local edits). After it succeeds we switch this browser into server mode.
+  // Explicit one-shot: push what's in THIS browser's local store onto the shared
+  // server. Never automatic (the first browser to load must not silently strand
+  // everyone else's data). Reads the PRIMARY local copy (not the in-memory server
+  // view), re-ids each file with a fresh server id so it can't clobber existing
+  // rows, imports, then refreshes from the server so this browser now shows the
+  // whole shared set (including teammates').
   const syncLocalToServer = useCallback(async (): Promise<number> => {
-    const n = await importFiles(files);
-    baseline.current = files;
+    const local = (await idbGet<ImportFile[]>(FILES_IDB_KEY).catch(() => undefined)) ?? [];
+    if (local.length === 0) {
+      showToast('No files in this browser to send');
+      return 0;
+    }
+    const reided: ImportFile[] = [];
+    for (const f of local) {
+      const id = await reserveId(); // throws if server unreachable -> caller toasts
+      reided.push({ ...f, id, fileNumber: fileNo(id) });
+    }
+    await importFiles(reided);
+    const server = await listFiles();
+    setFiles(server);
+    baseline.current = server;
     mode.current = 'server';
     setServerMode(true);
-    showToast(`Sent ${n} file${n === 1 ? '' : 's'} to the shared server`);
-    return n;
-  }, [files, showToast]);
+    idbSet(SERVER_CACHE_KEY, server).catch(() => {});
+    showToast(`Sent ${reided.length} file${reided.length === 1 ? '' : 's'} to the shared server`);
+    return reided.length;
+  }, [showToast]);
 
   const addUser = useCallback(
     (input: { name: string; email: string; role: Role }) => {
@@ -670,9 +704,23 @@ export function StoreProvider({
     [patchFile],
   );
 
+  // Server-assigned id in server mode (collision-free); local max+1 otherwise. If a
+  // server-mode reserve fails transiently, fall back to a random high id so we still
+  // never collide on id=1 (the subsequent PUT will retry via the sync loop).
+  const allocId = useCallback(async (): Promise<number> => {
+    if (mode.current === 'server') {
+      try {
+        return await reserveId();
+      } catch {
+        return 900_000_000 + Math.floor(Math.random() * 99_999_999);
+      }
+    }
+    return nextId(files);
+  }, [files]);
+
   const createFromTemplate = useCallback(
-    (input: CreateFromTemplateInput, tpl: TemplateLike): number => {
-      const id = nextId(files);
+    async (input: CreateFromTemplateInput, tpl: TemplateLike): Promise<number> => {
+      const id = await allocId();
       const file: ImportFile = {
         id,
         fileNumber: fileNo(id),
@@ -716,12 +764,12 @@ export function StoreProvider({
       showToast('Import file created');
       return id;
     },
-    [files, user, showToast],
+    [allocId, user, showToast],
   );
 
   const createBlank = useCallback(
-    (input: BlankInput): number => {
-      const id = nextId(files);
+    async (input: BlankInput): Promise<number> => {
+      const id = await allocId();
       const file: ImportFile = {
         id,
         fileNumber: fileNo(id),
@@ -756,7 +804,7 @@ export function StoreProvider({
       showToast('Import file created');
       return id;
     },
-    [files, user, showToast],
+    [allocId, user, showToast],
   );
 
   const value = useMemo<Store>(

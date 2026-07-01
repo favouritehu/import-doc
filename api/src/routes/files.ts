@@ -3,7 +3,7 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 import { DbNotConfigured } from '../db';
-import { listFiles, upsertFile, deleteFile, upsertMany, type StoredFile } from '../services/filesRepo';
+import { listFiles, upsertFile, deleteFile, upsertMany, reserveId, type StoredFile } from '../services/filesRepo';
 
 function dbGuard(reply: import('fastify').FastifyReply, e: unknown): boolean {
   if (e instanceof DbNotConfigured) {
@@ -17,6 +17,16 @@ export const files: FastifyPluginAsync = async (app) => {
   app.get('/', async (_req, reply) => {
     try {
       return { files: await listFiles() };
+    } catch (e) {
+      if (dbGuard(reply, e)) return reply;
+      throw e;
+    }
+  });
+
+  // Reserve a unique id before building a new file (server-assigned, collision-free).
+  app.post('/reserve', async (_req, reply) => {
+    try {
+      return { id: await reserveId() };
     } catch (e) {
       if (dbGuard(reply, e)) return reply;
       throw e;

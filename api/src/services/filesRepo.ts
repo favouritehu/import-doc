@@ -7,6 +7,13 @@ import { query, withTx } from '../db';
 
 export type StoredFile = { id: number } & Record<string, unknown>;
 
+/** Reserve a fresh, globally-unique file id (monotonic sequence). No row inserted;
+ *  the client fills it via PUT. Prevents the "everyone starts at id=1" collision. */
+export async function reserveId(): Promise<number> {
+  const { rows } = await query<{ id: number }>("SELECT nextval('import_files_id_seq')::int AS id");
+  return rows[0].id;
+}
+
 export async function listFiles(): Promise<StoredFile[]> {
   const { rows } = await query<{ data: StoredFile }>('SELECT data FROM import_files ORDER BY id DESC');
   return rows.map((r) => r.data);
