@@ -7,7 +7,7 @@ import { magicPath } from '../lib/links';
 import { ROLE_LABEL } from '../lib/rolePolicy';
 import { USERS } from '../data/seed';
 import { useStore } from '../store/store';
-import { NAV_ICONS } from './navIcons';
+import { NAV_ICONS, NAV_ICON_FALLBACK } from './navIcons';
 
 export function Logo({ size = 36 }: { size?: number }) {
   return (
@@ -39,7 +39,7 @@ export function Sidebar() {
 
       <nav className="flex flex-1 flex-col gap-0.5">
         {items.map((it) => {
-          const Icon = NAV_ICONS[it.key];
+          const Icon = NAV_ICONS[it.key] ?? NAV_ICON_FALLBACK;
           const badge = it.badge ? badges[it.badge] : 0;
           return (
             <NavLink

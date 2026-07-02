@@ -3,6 +3,7 @@ import {
   Bell,
   CalendarCheck,
   CalendarDays,
+  Container,
   FileWarning,
   FolderOpen,
   LayoutDashboard,
@@ -20,7 +21,11 @@ export const NAV_ICONS: Record<string, LucideIcon> = {
   'pending-docs': FileWarning,
   'pending-payments': Wallet,
   cha: Ship,
+  tracking: Container,
   reports: BarChart3,
   settings: Settings,
   alerts: Bell,
 };
+
+// Fallback so an un-mapped nav key never renders `undefined` (white screen).
+export const NAV_ICON_FALLBACK: LucideIcon = FolderOpen;
