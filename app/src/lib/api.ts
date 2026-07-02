@@ -50,11 +50,17 @@ export class ApiError extends Error {
 
 async function req(path: string, init?: RequestInit): Promise<Response> {
   let res: Response;
+  // Only declare a JSON content-type when we actually send a body. Fastify rejects
+  // an EMPTY body when content-type is application/json (400), which broke every
+  // bodyless POST — /files/reserve (so create + import failed in server mode) and
+  // /tracking/activate-next, /:id/refresh.
+  const headers: Record<string, string> = {
+    ...authHeader(),
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  if (init?.body != null) headers['content-type'] = 'application/json';
   try {
-    res = await fetch(`${API}${path}`, {
-      ...init,
-      headers: { 'content-type': 'application/json', ...authHeader(), ...(init?.headers ?? {}) },
-    });
+    res = await fetch(`${API}${path}`, { ...init, headers });
   } catch {
     throw new ApiError('network', 'Cannot reach the server');
   }
