@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Cloud, CloudOff, LogOut, RotateCcw, Trash2, UploadCloud, Loader2 } from 'lucide-react';
+import { AlertTriangle, Cloud, CloudOff, Download, LogOut, RotateCcw, Trash2, Upload, UploadCloud, Loader2 } from 'lucide-react';
+import type { ImportFile } from '../types';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
 import { FilterTabs } from '../components/FilterTabs';
@@ -13,13 +14,14 @@ import { useStore } from '../store/store';
 import type { Role } from '../types';
 
 export function Settings() {
-  const { role, user, users, serverMode, syncLocalToServer, showToast, signOut, clearAll, resetDemo, addUser, removeUser } =
+  const { role, user, users, serverMode, syncLocalToServer, exportData, importData, showToast, signOut, clearAll, resetDemo, addUser, removeUser } =
     useStore();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const [confirm, setConfirm] = useState<'clear' | 'reset' | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [pushing, setPushing] = useState(false);
+  const fileInput = useRef<HTMLInputElement | null>(null);
 
   async function pushLocal() {
     if (pushing) return;
@@ -31,6 +33,34 @@ export function Settings() {
     } finally {
       setPushing(false);
     }
+  }
+
+  function doExport() {
+    const blob = new Blob([exportData()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `import-desk-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = async () => {
+      try {
+        const parsed = JSON.parse(String(r.result));
+        const list: ImportFile[] = Array.isArray(parsed) ? parsed : parsed.files;
+        await importData(list ?? []);
+      } catch {
+        showToast('Could not read that backup file');
+      }
+    };
+    r.onerror = () => showToast('Could not read that file');
+    r.readAsText(f);
   }
   const tab = params.get('tab') ?? 'users';
   const canHsn = RolePolicy.canSeeHsn(role);
@@ -141,6 +171,29 @@ export function Settings() {
             </Table>
           )}
         </div>
+
+        {isAdmin && (
+          <div className="mt-5 rounded-card border border-border bg-white p-4 shadow-card">
+            <div className="flex items-center gap-2 text-ink">
+              <Download size={16} className="text-navy" />
+              <h3 className="font-display text-sm font-bold">Backup &amp; move data</h3>
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              Data is stored per browser. Export a backup here, then Import it on another browser or the
+              deployed app to carry your shipments over{serverMode ? ' (Import lands straight in the shared server)' : ''}.
+              Imported files get fresh ids — they never overwrite what's already there.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="ghost" onClick={doExport}>
+                <Download size={14} /> Export backup (.json)
+              </Button>
+              <Button variant="ghost" onClick={() => fileInput.current?.click()}>
+                <Upload size={14} /> Import from file
+              </Button>
+              <input ref={fileInput} type="file" accept="application/json,.json" onChange={onImportFile} className="hidden" />
+            </div>
+          </div>
+        )}
 
         {isAdmin && (
           <div className="mt-5 rounded-card border border-border bg-white p-4 shadow-card">

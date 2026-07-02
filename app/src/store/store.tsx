@@ -179,6 +179,10 @@ interface Store {
   resetDemo: () => void;
   /** Push the current in-browser files onto the shared server (explicit, not automatic). */
   syncLocalToServer: () => Promise<number>;
+  /** Download-ready JSON backup of all current files (for cross-device/site moves). */
+  exportData: () => string;
+  /** Add files from a backup as NEW entries (fresh ids — never overwrites existing). */
+  importData: (incoming: ImportFile[]) => Promise<number>;
   users: User[];
   addUser: (input: { name: string; email: string; role: Role }) => void;
   removeUser: (id: number) => void;
@@ -479,6 +483,60 @@ export function StoreProvider({
   // view), re-ids each file with a fresh server id so it can't clobber existing
   // rows, imports, then refreshes from the server so this browser now shows the
   // whole shared set (including teammates').
+  // Backup / restore. Export is a plain JSON dump of the CURRENT files (run it on
+  // whichever browser holds the data you want). Import ADDS them as new files with
+  // fresh ids — so moving old localhost data into the deployed app never overwrites
+  // anything, and in server mode it lands straight in Postgres.
+  const exportData = useCallback((): string => {
+    return JSON.stringify({ app: 'import-desk', version: 1, exportedAt: TODAY, files }, null, 2);
+  }, [files]);
+
+  const importBusyRef = useRef(false);
+  const importData = useCallback(
+    async (incoming: ImportFile[]): Promise<number> => {
+      if (!Array.isArray(incoming) || incoming.length === 0) {
+        showToast('Nothing to import — file had no shipments');
+        return 0;
+      }
+      if (importBusyRef.current) return 0;
+      importBusyRef.current = true;
+      try {
+        if (mode.current === 'server') {
+          const reided: ImportFile[] = [];
+          for (const f of incoming) {
+            const id = await reserveId();
+            reided.push({ ...f, id, fileNumber: fileNo(id) });
+          }
+          await importFiles(reided);
+          let server: ImportFile[];
+          try {
+            server = await listFiles();
+          } catch {
+            server = [...reided, ...files];
+          }
+          setFiles(server);
+          baseline.current = server;
+          idbSet(SERVER_CACHE_KEY, server).catch(() => {});
+        } else {
+          // Local: append with fresh sequential ids (avoid colliding with existing).
+          setFiles((prev) => {
+            let max = prev.reduce((m, f) => Math.max(m, f.id), 0);
+            const added = incoming.map((f) => {
+              max += 1;
+              return { ...f, id: max, fileNumber: fileNo(max) };
+            });
+            return [...added, ...prev];
+          });
+        }
+        showToast(`Imported ${incoming.length} file${incoming.length === 1 ? '' : 's'}`);
+        return incoming.length;
+      } finally {
+        importBusyRef.current = false;
+      }
+    },
+    [files, showToast],
+  );
+
   const importBusy = useRef(false);
   const syncLocalToServer = useCallback(async (): Promise<number> => {
     // Concurrency guard (belt over the UI's `pushing` state): two overlapping calls
@@ -962,6 +1020,8 @@ export function StoreProvider({
       clearAll,
       resetDemo,
       syncLocalToServer,
+      exportData,
+      importData,
       users,
       addUser,
       removeUser,
@@ -998,6 +1058,8 @@ export function StoreProvider({
       clearAll,
       resetDemo,
       syncLocalToServer,
+      exportData,
+      importData,
       users,
       addUser,
       removeUser,
