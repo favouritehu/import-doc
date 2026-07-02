@@ -536,7 +536,10 @@ export function StoreProvider({
             const id = await reserveId();
             reided.push({ ...f, id, fileNumber: fileNo(id) });
           }
-          await importFiles(reided);
+          // Chunk so a big backup (inline file data) can't exceed the API body limit.
+          for (let i = 0; i < reided.length; i += 10) {
+            await importFiles(reided.slice(i, i + 10));
+          }
           let server: ImportFile[];
           try {
             server = await listFiles();

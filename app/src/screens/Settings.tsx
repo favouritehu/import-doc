@@ -51,12 +51,23 @@ export function Settings() {
     if (!f) return;
     const r = new FileReader();
     r.onload = async () => {
+      let list: ImportFile[] | undefined;
       try {
         const parsed = JSON.parse(String(r.result));
-        const list: ImportFile[] = Array.isArray(parsed) ? parsed : parsed.files;
-        await importData(list ?? []);
+        list = Array.isArray(parsed) ? parsed : parsed.files;
       } catch {
-        showToast('Could not read that backup file');
+        showToast('That file is not a valid backup (.json exported from this app)');
+        return;
+      }
+      if (!Array.isArray(list) || list.length === 0) {
+        showToast('No shipments found in that backup file');
+        return;
+      }
+      try {
+        await importData(list);
+      } catch (err) {
+        console.error('import failed', err);
+        showToast(`Import failed: ${(err as Error)?.message ?? 'server error'}`);
       }
     };
     r.onerror = () => showToast('Could not read that file');
