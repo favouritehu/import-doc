@@ -60,6 +60,9 @@ export interface Doc {
   version?: number;
   fileName?: string | null; // real uploaded file name (Phase A: client-side only)
   fileUrl?: string | null; // object URL for the picked file (in-memory, lost on reload)
+  // Custom files added under a specific invoice/party live in file.docs but carry
+  // the owning invoice id so the Documents tab groups them under that party.
+  invoiceId?: string;
 }
 
 /**

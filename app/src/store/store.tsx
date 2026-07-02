@@ -648,17 +648,25 @@ export function StoreProvider({
     (fileId: number, type: string, invoiceId: string | undefined, mut: (d: Doc) => Doc) => {
       patchFile(fileId, (f) => {
         if (invoiceId) {
+          // A CI/PL slot lives on the invoice; a custom per-party file lives in
+          // file.docs tagged with invoiceId. Route to whichever this type is.
+          const inv = f.invoices.find((i) => i.id === invoiceId);
+          if (inv && (inv.ci.type === type || inv.pl.type === type)) {
+            return {
+              ...f,
+              invoices: f.invoices.map((i) => {
+                if (i.id !== invoiceId) return i;
+                if (i.ci.type === type) return { ...i, ci: mut(i.ci) };
+                return { ...i, pl: mut(i.pl) };
+              }),
+            };
+          }
           return {
             ...f,
-            invoices: f.invoices.map((inv) => {
-              if (inv.id !== invoiceId) return inv;
-              if (inv.ci.type === type) return { ...inv, ci: mut(inv.ci) };
-              if (inv.pl.type === type) return { ...inv, pl: mut(inv.pl) };
-              return inv;
-            }),
+            docs: f.docs.map((d) => (d.type === type && d.invoiceId === invoiceId ? mut(d) : d)),
           };
         }
-        return { ...f, docs: f.docs.map((d) => (d.type === type ? mut(d) : d)) };
+        return { ...f, docs: f.docs.map((d) => (d.type === type && !d.invoiceId ? mut(d) : d)) };
       });
     },
     [patchFile],
@@ -705,34 +713,44 @@ export function StoreProvider({
         fileUrl: d.fileUrl,
         label: d.label ?? doc.label,
       });
+      const freshDoc = (invoiceId?: string): Doc => ({
+        type: d.type,
+        label: d.label ?? d.type,
+        status: 'uploaded',
+        required: false,
+        by,
+        at: TODAY,
+        reason: null,
+        version: 1,
+        fileName: d.fileName,
+        fileUrl: d.fileUrl,
+        ...(invoiceId ? { invoiceId } : {}),
+      });
       patchFile(fileId, (f) => {
         if (d.invoiceId) {
-          return {
-            ...f,
-            invoices: f.invoices.map((inv) => {
-              if (inv.id !== d.invoiceId) return inv;
-              if (inv.ci.type === d.type) return { ...inv, ci: fill(inv.ci) };
-              if (inv.pl.type === d.type) return { ...inv, pl: fill(inv.pl) };
-              return inv;
-            }),
-          };
+          const inv = f.invoices.find((i) => i.id === d.invoiceId);
+          if (inv && (inv.ci.type === d.type || inv.pl.type === d.type)) {
+            return {
+              ...f,
+              invoices: f.invoices.map((i) => {
+                if (i.id !== d.invoiceId) return i;
+                if (i.ci.type === d.type) return { ...i, ci: fill(i.ci) };
+                return { ...i, pl: fill(i.pl) };
+              }),
+            };
+          }
+          if (f.docs.some((x) => x.type === d.type && x.invoiceId === d.invoiceId)) {
+            return {
+              ...f,
+              docs: f.docs.map((x) => (x.type === d.type && x.invoiceId === d.invoiceId ? fill(x) : x)),
+            };
+          }
+          return { ...f, docs: [...f.docs, freshDoc(d.invoiceId)] };
         }
-        if (f.docs.some((x) => x.type === d.type)) {
-          return { ...f, docs: f.docs.map((x) => (x.type === d.type ? fill(x) : x)) };
+        if (f.docs.some((x) => x.type === d.type && !x.invoiceId)) {
+          return { ...f, docs: f.docs.map((x) => (x.type === d.type && !x.invoiceId ? fill(x) : x)) };
         }
-        const fresh: Doc = {
-          type: d.type,
-          label: d.label ?? d.type,
-          status: 'uploaded',
-          required: false,
-          by,
-          at: TODAY,
-          reason: null,
-          version: 1,
-          fileName: d.fileName,
-          fileUrl: d.fileUrl,
-        };
-        return { ...f, docs: [...f.docs, fresh] };
+        return { ...f, docs: [...f.docs, freshDoc()] };
       });
       showToast(`Added ${d.fileName}`);
     },

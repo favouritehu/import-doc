@@ -72,6 +72,7 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
   const [editFile, setEditFile] = useState(false);
   const [editInv, setEditInv] = useState<Invoice | null>(null);
   const [addDoc, setAddDoc] = useState(false);
+  const [addScope, setAddScope] = useState<{ invoiceId: string; supplier: string } | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [chaseOpen, setChaseOpen] = useState(false);
 
@@ -102,24 +103,28 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
     if (!slide) return null;
     if (slide.invoiceId) {
       const inv = file.invoices.find((i) => i.id === slide.invoiceId);
-      if (!inv) return null;
-      return inv.ci.type === slide.type ? inv.ci : inv.pl;
+      if (inv && inv.ci.type === slide.type) return inv.ci;
+      if (inv && inv.pl.type === slide.type) return inv.pl;
+      return file.docs.find((d) => d.type === slide.type && d.invoiceId === slide.invoiceId) ?? null;
     }
-    return file.docs.find((d) => d.type === slide.type) ?? null;
+    return file.docs.find((d) => d.type === slide.type && !d.invoiceId) ?? null;
   })();
 
   // Show only documents the user has actually added — never the empty checklist.
   const added = (ds: Doc[]) => ds.filter((d) => d.status !== 'missing');
+  const sharedDocs = added(file.docs.filter((d) => !d.invoiceId));
   const docGroups: DocGroup[] = [
     ...file.invoices.map((inv, i) => ({
       key: inv.id,
       title: `Invoice ${i + 1} · ${inv.supplier}`,
       subtitle: inv.invoiceNumber,
       invoiceId: inv.id,
-      docs: added([inv.ci, inv.pl]),
+      docs: added([inv.ci, inv.pl, ...file.docs.filter((d) => d.invoiceId === inv.id)]),
     })),
-    { key: 'shared', title: 'Shared documents', subtitle: 'One clearance', docs: added(file.docs) },
-  ].filter((g) => g.docs.length > 0);
+    ...(sharedDocs.length
+      ? [{ key: 'shared', title: 'Shared documents', subtitle: 'One clearance', docs: sharedDocs }]
+      : []),
+  ];
   const reqMissingCount = requiredMissingDocs(file).length;
 
   // Soonest ETD/ETA reminder — used to fire a test email through n8n (admin).
@@ -256,7 +261,14 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
               </div>
             </div>
             {docGroups.length > 0 ? (
-              <DocumentChecklist groups={docGroups} onRow={(d, invoiceId) => setSlide({ type: d.type, invoiceId })} />
+              <DocumentChecklist
+                groups={docGroups}
+                onRow={(d, invoiceId) => setSlide({ type: d.type, invoiceId })}
+                onAddFile={(invoiceId) => {
+                  const inv = file.invoices.find((i) => i.id === invoiceId);
+                  setAddScope({ invoiceId, supplier: inv?.supplier ?? '' });
+                }}
+              />
             ) : (
               <div className="grid place-items-center gap-2 rounded-card border border-dashed border-divider bg-page py-12 text-center">
                 <FileUp size={26} className="text-faint" />
@@ -304,6 +316,21 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
       {linkOpen && <MagicLinkPanel file={file} onClose={() => setLinkOpen(false)} />}
       {addPay && <AddPaymentModal onClose={() => setAddPay(false)} onAdd={(p) => store.addPayment(file.id, p)} />}
       {addInv && <AddInvoiceModal canFin={canFin} onClose={() => setAddInv(false)} onAdd={(d) => store.addInvoice(file.id, d)} />}
+      {addScope && (
+        <AddPartyFileModal
+          supplier={addScope.supplier}
+          onClose={() => setAddScope(null)}
+          onAdd={(d) =>
+            store.addDocument(file.id, {
+              type: `custom-${Date.now()}`,
+              label: d.label,
+              invoiceId: addScope.invoiceId,
+              fileName: d.fileName,
+              fileUrl: d.fileUrl,
+            })
+          }
+        />
+      )}
       {addDoc && (
         <AddDocumentModal
           file={file}
@@ -937,6 +964,77 @@ function matchInvoice(invoices: Invoice[], c: ClassifyResult): Invoice | null {
     if (bySup) return bySup;
   }
   return invoices.length === 1 ? invoices[0] : null;
+}
+
+function AddPartyFileModal({
+  supplier,
+  onClose,
+  onAdd,
+}: {
+  supplier: string;
+  onClose: () => void;
+  onAdd: (d: { label: string; fileName: string; fileUrl: string }) => void;
+}) {
+  const { uploadFile } = useStore();
+  const [picked, setPicked] = useState<File | null>(null);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    if (!picked || !name.trim() || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const { fileName, fileUrl } = await uploadFile(picked);
+      onAdd({ label: name.trim(), fileName, fileUrl });
+      onClose();
+    } catch {
+      setBusy(false);
+      setErr('Could not upload — try again.');
+    }
+  };
+  return (
+    <Modal
+      title="Add file"
+      subtitle={`For ${supplier || 'this party'}`}
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button disabled={!picked || !name.trim() || busy} onClick={submit}>
+            {busy ? 'Uploading…' : 'Add file'}
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-3">
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-muted">File</span>
+          <input
+            type="file"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setPicked(f);
+              if (f && !name.trim()) setName(f.name.replace(/\.[^.]+$/, ''));
+            }}
+            className={inputCls}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-muted">Name this file</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={inputCls}
+            placeholder="e.g. Fumigation certificate"
+          />
+        </label>
+        {err && <p className="text-xs font-semibold text-red">{err}</p>}
+      </div>
+    </Modal>
+  );
 }
 
 function AddDocumentModal({
