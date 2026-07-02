@@ -13,9 +13,15 @@ import { Login } from '../screens/Login';
 type Phase = 'checking' | 'login' | 'ready';
 
 export function AuthGate({ children }: { children: ReactNode }) {
-  const [phase, setPhase] = useState<Phase>('checking');
+  // External magic-link portal (/u/...): suppliers/CHA hold a link token, never the
+  // team password — the gate must not lock them out (they'd need the internal
+  // password, which also unlocks the whole files API).
+  const external =
+    typeof window !== 'undefined' && window.location.pathname.startsWith('/u/');
+  const [phase, setPhase] = useState<Phase>(external ? 'ready' : 'checking');
 
   useEffect(() => {
+    if (external) return;
     let alive = true;
     authStatus()
       .then(({ required }) => {
@@ -26,7 +32,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [external]);
 
   if (phase === 'checking') return <div className="min-h-dvh bg-navy" />;
   if (phase === 'login') return <Login onAuthed={() => setPhase('ready')} />;

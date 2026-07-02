@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, FileText, Loader2, Plane, Plus, Ship, Sparkles, Trash2, Wand2, Zap } from 'lucide-react';
 import type { Currency, Incoterm, Mode, Priority } from '../types';
@@ -82,6 +82,19 @@ export function CreateFile() {
   const { createFromTemplate, createBlank, uploadDoc, users } = useStore();
   const [view, setView] = useState<'pick' | 'template' | 'blank' | 'ai' | 'quick'>('pick');
   const [tplId, setTplId] = useState<string | null>(null);
+  // Double-submit guard: in server mode create awaits a network id-reservation, so
+  // a double-click would otherwise create two files (and in local mode both would
+  // get the SAME id from the same render snapshot). Second call no-ops.
+  const creating = useRef(false);
+  const once = async (fn: () => Promise<number>): Promise<number | null> => {
+    if (creating.current) return null;
+    creating.current = true;
+    try {
+      return await fn();
+    } finally {
+      creating.current = false;
+    }
+  };
 
   return (
     <>
@@ -104,8 +117,8 @@ export function CreateFile() {
             onBack={() => setView('pick')}
             onCreate={async (input) => {
               const tpl = TEMPLATES.find((t) => t.id === tplId)!;
-              const id = await createFromTemplate({ templateId: tplId, ...input }, tpl);
-              nav(`/files/${id}`);
+              const id = await once(() => createFromTemplate({ templateId: tplId, ...input }, tpl));
+              if (id !== null) nav(`/files/${id}`);
             }}
           />
         )}
@@ -114,8 +127,8 @@ export function CreateFile() {
             users={users}
             onBack={() => setView('pick')}
             onCreate={async (input) => {
-              const id = await createBlank(input);
-              nav(`/files/${id}`);
+              const id = await once(() => createBlank(input));
+              if (id !== null) nav(`/files/${id}`);
             }}
           />
         )}
@@ -124,8 +137,8 @@ export function CreateFile() {
             users={users}
             onBack={() => setView('pick')}
             onCreate={async (input) => {
-              const id = await createBlank(input);
-              nav(`/files/${id}`);
+              const id = await once(() => createBlank(input));
+              if (id !== null) nav(`/files/${id}`);
             }}
           />
         )}
@@ -133,7 +146,7 @@ export function CreateFile() {
           <QuickStartView
             users={users}
             onBack={() => setView('pick')}
-            onCreate={createBlank}
+            onCreate={(i) => once(() => createBlank(i))}
             onAttachPi={(id, fileName, fileUrl) => uploadDoc(id, 'proforma_invoice', { fileName, fileUrl })}
             onDone={(id) => nav(`/files/${id}`)}
           />
@@ -748,7 +761,7 @@ function QuickStartView({
 }: {
   users: User[];
   onBack: () => void;
-  onCreate: (i: BlankInput) => Promise<number>;
+  onCreate: (i: BlankInput) => Promise<number | null>;
   onAttachPi: (id: number, fileName: string, fileUrl: string) => void;
   onDone: (id: number) => void;
 }) {
@@ -766,7 +779,7 @@ function QuickStartView({
 
   const create = async () => {
     if (valid === false) return;
-    const id = await onCreate({
+    const created = await onCreate({
       country,
       mode,
       incoterm,
@@ -785,12 +798,16 @@ function QuickStartView({
         { supplier: supplier.trim(), invoiceNumber: piNo.trim(), usd: Number(amount) || 0, currency, product: product.trim() },
       ],
     });
+    if (created === null) return; // double-click no-op (guarded upstream)
+    const id = created;
     if (pi) {
       const r = new FileReader();
       r.onload = () => {
         onAttachPi(id, pi.name, typeof r.result === 'string' ? r.result : '');
         onDone(id);
       };
+      // File already created — still navigate; the PI just didn't attach.
+      r.onerror = () => onDone(id);
       r.readAsDataURL(pi);
     } else {
       onDone(id);

@@ -67,11 +67,13 @@ export function FilePreviewModal({
   invoiceId?: string;
   onClose: () => void;
 }) {
-  const { role, uploadDoc, approveDoc, flagDoc, requestCorrection, reuploadDoc, clearDoc } = useStore();
+  const { role, uploadDoc, approveDoc, flagDoc, requestCorrection, reuploadDoc, clearDoc, showToast } = useStore();
   const canApprove = RolePolicy.canApproveDoc(role);
   const canDelete = RolePolicy.canDelete(role);
+  const canFin = RolePolicy.canSeeFinancials(role);
   const inv: Invoice | undefined = invoiceId ? file.invoices.find((i) => i.id === invoiceId) : undefined;
-  const fields = previewFields(doc, file, inv);
+  // canFin strips Amount / duty / assessable-value fields for Import Manager (§0).
+  const fields = previewFields(doc, file, inv, canFin);
   const target = { invoiceId };
   // Chrome won't open a stored data: URL — convert to a blob URL at view time.
   const openUrl = useOpenableUrl(doc.fileUrl);
@@ -117,6 +119,7 @@ export function FilePreviewModal({
   const readUrl = (f: File, cb: (url: string) => void) => {
     const r = new FileReader();
     r.onload = () => cb(typeof r.result === 'string' ? r.result : '');
+    r.onerror = () => showToast('Could not read the file — try again');
     r.readAsDataURL(f);
   };
   const doUpload = (f: File) =>

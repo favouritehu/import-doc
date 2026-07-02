@@ -36,7 +36,9 @@ export function Welcome() {
   const submit = () => {
     if (!valid) return;
     const u: User = {
-      id: 1000,
+      // Unique per sign-in — a fixed id would overwrite the previous person's row
+      // in the users list (the store syncs the signed-in user into it by id).
+      id: Date.now(),
       name: name.trim(),
       role,
       initials: initialsOf(name),

@@ -57,8 +57,9 @@ export function FileDetail() {
 }
 
 /** The file workspace body (no TopBar) — shared by the /files/:id route and the
- *  parties Workspace detail pane. */
-export function FileDetailBody({ file }: { file: ImportFile }) {
+ *  parties Workspace detail pane. `onDeleted` lets the Workspace stay in place
+ *  (clear its ?file param) instead of being dumped onto /files. */
+export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDeleted?: () => void }) {
   const nav = useNavigate();
   const store = useStore();
   const { role } = store;
@@ -302,7 +303,7 @@ export function FileDetailBody({ file }: { file: ImportFile }) {
       {slideDoc && <FilePreviewModal file={file} doc={slideDoc} invoiceId={slide?.invoiceId} onClose={() => setSlide(null)} />}
       {linkOpen && <MagicLinkPanel file={file} onClose={() => setLinkOpen(false)} />}
       {addPay && <AddPaymentModal onClose={() => setAddPay(false)} onAdd={(p) => store.addPayment(file.id, p)} />}
-      {addInv && <AddInvoiceModal onClose={() => setAddInv(false)} onAdd={(d) => store.addInvoice(file.id, d)} />}
+      {addInv && <AddInvoiceModal canFin={canFin} onClose={() => setAddInv(false)} onAdd={(d) => store.addInvoice(file.id, d)} />}
       {addDoc && (
         <AddDocumentModal
           file={file}
@@ -332,6 +333,8 @@ export function FileDetailBody({ file }: { file: ImportFile }) {
       {editInv && (
         <EditInvoiceModal
           inv={editInv}
+          canFin={canFin}
+          canHsn={canHsn}
           onClose={() => setEditInv(null)}
           onSave={(patch) => store.updateInvoice(file.id, editInv.id, patch)}
         />
@@ -350,7 +353,8 @@ export function FileDetailBody({ file }: { file: ImportFile }) {
                 variant="danger"
                 onClick={() => {
                   store.deleteFile(file.id);
-                  nav('/files');
+                  if (onDeleted) onDeleted();
+                  else nav('/files');
                 }}
               >
                 Delete file
@@ -564,9 +568,12 @@ function AddPaymentModal({
 }
 
 function AddInvoiceModal({
+  canFin,
   onClose,
   onAdd,
 }: {
+  /** §0 rule 4: without financial access the Amount/Currency fields are hidden and the invoice lands with value 0 (Accountant fills it in). */
+  canFin: boolean;
   onClose: () => void;
   onAdd: (d: {
     supplier: string;
@@ -583,7 +590,7 @@ function AddInvoiceModal({
   const [weight, setWeight] = useState('');
   const [usd, setUsd] = useState('');
   const [currency, setCurrency] = useState<Currency>('USD');
-  const valid = supplier.trim() && invoiceNumber.trim() && Number(usd) > 0;
+  const valid = supplier.trim() && invoiceNumber.trim() && (!canFin || Number(usd) > 0);
 
   return (
     <Modal
@@ -629,20 +636,22 @@ function AddInvoiceModal({
             className={inputCls}
           />
         </label>
-        <div className="grid grid-cols-3 gap-2">
-          <label className="col-span-2 block">
-            <span className="mb-1 block text-xs font-semibold text-muted">Amount</span>
-            <input value={usd} onChange={(e) => setUsd(e.target.value)} inputMode="numeric" className={inputCls} />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-muted">Currency</span>
-            <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)} className={inputCls}>
-              {CURRENCIES.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </label>
-        </div>
+        {canFin && (
+          <div className="grid grid-cols-3 gap-2">
+            <label className="col-span-2 block">
+              <span className="mb-1 block text-xs font-semibold text-muted">Amount</span>
+              <input value={usd} onChange={(e) => setUsd(e.target.value)} inputMode="numeric" className={inputCls} />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold text-muted">Currency</span>
+              <select value={currency} onChange={(e) => setCurrency(e.target.value as Currency)} className={inputCls}>
+                {CURRENCIES.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -805,10 +814,15 @@ function EditFileModal({
 
 function EditInvoiceModal({
   inv,
+  canFin,
+  canHsn,
   onClose,
   onSave,
 }: {
   inv: Invoice;
+  /** §0 rule 4: Import Manager never sees a financial field — hides Amount/Currency (canFin) and HSN (canHsn); the save patch leaves them untouched. */
+  canFin: boolean;
+  canHsn: boolean;
   onClose: () => void;
   onSave: (patch: Partial<Invoice>) => void;
 }) {
@@ -845,10 +859,10 @@ function EditInvoiceModal({
                 product: v.product,
                 qty: v.qty,
                 weight: v.weight.trim() || undefined,
-                hsn: v.hsn.trim() || undefined,
-                usd: Number(v.amount) || 0,
-                currency: v.currency,
-                rate: APPROX_INR_RATE[v.currency],
+                ...(canHsn ? { hsn: v.hsn.trim() || undefined } : {}),
+                ...(canFin
+                  ? { usd: Number(v.amount) || 0, currency: v.currency, rate: APPROX_INR_RATE[v.currency] }
+                  : {}),
               });
               onClose();
             }}
@@ -877,19 +891,25 @@ function EditInvoiceModal({
         <L label="Weight">
           <input value={v.weight} onChange={(e) => set({ weight: e.target.value })} placeholder="e.g. 1,250 kg" className={inputCls} />
         </L>
-        <L label="HSN">
-          <input value={v.hsn} onChange={(e) => set({ hsn: e.target.value })} className={inputCls} />
-        </L>
-        <L label="Amount">
-          <input value={v.amount} onChange={(e) => set({ amount: e.target.value })} inputMode="numeric" className={inputCls} />
-        </L>
-        <L label="Currency">
-          <select value={v.currency} onChange={(e) => set({ currency: e.target.value as Currency })} className={inputCls}>
-            {(['USD', 'EUR', 'CNY', 'INR'] as const).map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-        </L>
+        {canHsn && (
+          <L label="HSN">
+            <input value={v.hsn} onChange={(e) => set({ hsn: e.target.value })} className={inputCls} />
+          </L>
+        )}
+        {canFin && (
+          <>
+            <L label="Amount">
+              <input value={v.amount} onChange={(e) => set({ amount: e.target.value })} inputMode="numeric" className={inputCls} />
+            </L>
+            <L label="Currency">
+              <select value={v.currency} onChange={(e) => set({ currency: e.target.value as Currency })} className={inputCls}>
+                {(['USD', 'EUR', 'CNY', 'INR'] as const).map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+            </L>
+          </>
+        )}
       </div>
     </Modal>
   );
@@ -1009,6 +1029,8 @@ function AddDocumentModal({
       }
       onClose();
     };
+    // Without this a failed read left the modal open and silent (no feedback).
+    r.onerror = () => setAiNote('Could not read the file — pick it again.');
     r.readAsDataURL(picked);
   };
 

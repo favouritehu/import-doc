@@ -105,6 +105,34 @@ export async function deleteFileRemote(id: number): Promise<void> {
   await req(`/files/${id}`, { method: 'DELETE' });
 }
 
+/**
+ * Best-effort fire-and-forget flush for pagehide/tab-close: keepalive lets the
+ * request outlive the page. Bodies over ~64KB are silently rejected by browsers'
+ * keepalive budget — acceptable for a last-gasp flush (the normal sync path
+ * retries on next load via the unchanged baseline).
+ */
+export function flushPlanKeepalive(plan: SyncPlan<ImportFile>): void {
+  try {
+    for (const f of plan.upserts) {
+      void fetch(`${API}/files/${f.id}`, {
+        method: 'PUT',
+        keepalive: true,
+        headers: { 'content-type': 'application/json', ...authHeader() },
+        body: JSON.stringify(f),
+      }).catch(() => {});
+    }
+    for (const id of plan.deletes) {
+      void fetch(`${API}/files/${id}`, {
+        method: 'DELETE',
+        keepalive: true,
+        headers: { ...authHeader() },
+      }).catch(() => {});
+    }
+  } catch {
+    /* best-effort only */
+  }
+}
+
 /** Bulk upsert local data onto the server ("import my local data"). */
 export async function importFiles(files: ImportFile[]): Promise<number> {
   const res = await req('/files/import', { method: 'POST', body: JSON.stringify({ files }) });
@@ -115,12 +143,32 @@ export async function importFiles(files: ImportFile[]): Promise<number> {
 /**
  * Execute a diff plan, returning the ids that FAILED (so the store can keep them
  * out of the advanced baseline and retry). Never throws — collects failures.
+ * `unauthorized` flags a 401 so the store can re-auth instead of retrying forever.
  */
-export async function runSyncPlan(plan: SyncPlan<ImportFile>): Promise<SyncFailures> {
-  const failed: SyncFailures = { upserts: [], deletes: [] };
+export async function runSyncPlan(
+  plan: SyncPlan<ImportFile>,
+): Promise<SyncFailures & { unauthorized: boolean }> {
+  const failed: SyncFailures & { unauthorized: boolean } = {
+    upserts: [],
+    deletes: [],
+    unauthorized: false,
+  };
+  const track = (e: unknown) => {
+    if (e instanceof ApiError && e.kind === 'unauthorized') failed.unauthorized = true;
+  };
   await Promise.all([
-    ...plan.upserts.map((f) => putFile(f).catch(() => failed.upserts.push(f.id))),
-    ...plan.deletes.map((id) => deleteFileRemote(id).catch(() => failed.deletes.push(id))),
+    ...plan.upserts.map((f) =>
+      putFile(f).catch((e) => {
+        failed.upserts.push(f.id);
+        track(e);
+      }),
+    ),
+    ...plan.deletes.map((id) =>
+      deleteFileRemote(id).catch((e) => {
+        failed.deletes.push(id);
+        track(e);
+      }),
+    ),
   ]);
   return failed;
 }

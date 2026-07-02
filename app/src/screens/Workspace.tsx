@@ -193,7 +193,18 @@ export function Workspace() {
         </aside>
         <div className="min-w-0 flex-1 overflow-y-auto">
           {selFile ? (
-            <FileDetailBody file={selFile} />
+            <FileDetailBody
+              file={selFile}
+              // Stay in the workspace on delete: clear the selection param so the
+              // default (most-urgent) file takes over — not a jump to /files with a
+              // stale ?file=<deleted> left in history.
+              onDeleted={() => {
+                const next = new URLSearchParams(params);
+                next.delete('file');
+                next.delete('tab');
+                setParams(next, { replace: true });
+              }}
+            />
           ) : (
             <div className="grid h-full place-items-center text-muted">
               <div className="text-center">

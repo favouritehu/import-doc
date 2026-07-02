@@ -10,7 +10,16 @@ export interface PreviewField {
   value: string;
 }
 
-export function previewFields(doc: Doc, f: ImportFile, inv?: Invoice): PreviewField[] {
+// Labels that reveal money (§0 rule 4: Import Manager and external parties never
+// see a financial field). Filtered out when canFin is false.
+const FINANCIAL_LABELS = new Set(['Amount', 'Assessable Value', 'Total Duty', 'IGST', 'Insured Value']);
+
+export function previewFields(doc: Doc, f: ImportFile, inv?: Invoice, canFin = true): PreviewField[] {
+  const fields = rawFields(doc, f, inv);
+  return canFin ? fields : fields.filter((x) => !FINANCIAL_LABELS.has(x.label));
+}
+
+function rawFields(doc: Doc, f: ImportFile, inv?: Invoice): PreviewField[] {
   const shipping: PreviewField[] = [
     { label: 'File', value: f.fileNumber },
     { label: 'BL / AWB', value: f.blAwb || '—' },

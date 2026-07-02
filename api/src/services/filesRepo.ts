@@ -8,8 +8,19 @@ import { query, withTx } from '../db';
 export type StoredFile = { id: number } & Record<string, unknown>;
 
 /** Reserve a fresh, globally-unique file id (monotonic sequence). No row inserted;
- *  the client fills it via PUT. Prevents the "everyone starts at id=1" collision. */
+ *  the client fills it via PUT. Prevents the "everyone starts at id=1" collision.
+ *
+ *  The sequence is first bumped past MAX(id) in the table: imported local data and
+ *  legacy rows carry client-assigned ids the sequence never saw — without the bump
+ *  a later reserve could hand out an id that already exists and the PUT (an
+ *  upsert) would silently overwrite someone's file. */
 export async function reserveId(): Promise<number> {
+  await query(
+    `SELECT setval('import_files_id_seq',
+       GREATEST((SELECT COALESCE(MAX(id), 0) FROM import_files),
+                (SELECT last_value FROM import_files_id_seq)),
+       true)`,
+  );
   const { rows } = await query<{ id: number }>("SELECT nextval('import_files_id_seq')::int AS id");
   return rows[0].id;
 }

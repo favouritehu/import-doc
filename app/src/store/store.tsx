@@ -34,7 +34,15 @@ import { CHA_STEPS, docLabel } from '../lib/docs';
 import { isRequired } from '../lib/derive';
 import { idbGet, idbSet } from '../lib/idb';
 import { diffFiles, reconcileBaseline } from '../lib/sync';
-import { listFiles, runSyncPlan, importFiles, reserveId, ApiError, clearToken } from '../lib/api';
+import {
+  listFiles,
+  runSyncPlan,
+  importFiles,
+  reserveId,
+  flushPlanKeepalive,
+  ApiError,
+  clearToken,
+} from '../lib/api';
 
 // When mode/incoterm change, keep uploads but fix each doc's required flag and
 // swap bill_of_lading <-> awb for the new mode.
@@ -47,7 +55,12 @@ function remapDocs(docs: Doc[], mode: Mode, incoterm: Incoterm): Doc[] {
   });
 }
 
-export const TODAY = '18 Jun 2026';
+// Real current date, formatted like parseDate expects ('18 Jun 2026'). Stamped on
+// user actions (uploads, payments, notes) — was a hardcoded demo constant, which
+// wrote a fixed wrong date into persistent/shared data.
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const _now = new Date();
+export const TODAY = `${_now.getDate()} ${MONTH_ABBR[_now.getMonth()]} ${_now.getFullYear()}`;
 
 const userName = (role: Role): string => USERS.find((u) => u.role === role)?.name ?? 'Owner';
 
@@ -215,6 +228,14 @@ export function StoreProvider({
   const baseline = useRef<ImportFile[]>([]);
   // 'server' = shared Postgres; 'local' = per-browser IndexedDB (no DB / API down).
   const mode = useRef<'server' | 'local'>('local');
+  // Which IDB key local-mode persists to. CRITICAL: when the offline fallback loads
+  // the SERVER cache, edits must go back to the cache key — writing cache-derived
+  // state into FILES_IDB_KEY would overwrite the browser's own (importable) data.
+  const persistKey = useRef<string>(FILES_IDB_KEY);
+  // Serialize server syncs + retry bookkeeping (see the persist effect).
+  const syncBusy = useRef(false);
+  const syncAgain = useRef(false);
+  const retryTimer = useRef<number | null>(null);
   const [users, setUsers] = useState<User[]>(() => loadUsers());
   const [toast, setToast] = useState<string | null>(null);
 
@@ -272,6 +293,11 @@ export function StoreProvider({
       try {
         const server = await listFiles();
         if (!alive) return;
+        try {
+          sessionStorage.removeItem('id-401-reloaded');
+        } catch {
+          /* ignore */
+        }
         setFiles(server);
         baseline.current = server;
         mode.current = 'server';
@@ -282,16 +308,31 @@ export function StoreProvider({
       } catch (e) {
         if (e instanceof ApiError && e.kind === 'unauthorized') {
           // Token stale/expired — drop it so the App-level gate shows the login.
+          // Reload-once guard: if a reload already happened this session (e.g. the
+          // server 401s /files while /auth/status false-negatives), fall through to
+          // the offline fallback instead of reloading forever.
           clearToken();
-          if (alive) window.location.reload();
-          return;
+          if (alive && !sessionStorage.getItem('id-401-reloaded')) {
+            sessionStorage.setItem('id-401-reloaded', '1');
+            window.location.reload();
+            return;
+          }
+        } else {
+          try {
+            sessionStorage.removeItem('id-401-reloaded');
+          } catch {
+            /* ignore */
+          }
         }
         // 503 (no DB) or network — offline. Prefer the server cache (last shared
-        // state) if we have one, else this browser's own local store.
+        // state) if we have one, else this browser's own local store — and remember
+        // WHICH key we loaded so edits persist back to the same key (never let
+        // cache-derived state overwrite the browser's own importable data).
         const cache = await idbGet<ImportFile[]>(SERVER_CACHE_KEY).catch(() => undefined);
         const local = await idbGet<ImportFile[]>(FILES_IDB_KEY).catch(() => undefined);
         const saved = cache ?? local ?? [];
         if (!alive) return;
+        persistKey.current = cache ? SERVER_CACHE_KEY : FILES_IDB_KEY;
         setFiles(saved);
         baseline.current = saved;
         mode.current = 'local';
@@ -313,31 +354,82 @@ export function StoreProvider({
     };
   }, [initialFiles]);
 
-  // Persist on change. Write-through to IndexedDB in BOTH modes (offline cache +
-  // fallback so a server outage next session shows the last good copy). In server
-  // mode also diff-sync the minimal PUT/DELETE set, debounced to coalesce bursts.
-  // Guarded by loaded.current so a failed hydrate can't wipe anything.
-  useEffect(() => {
-    if (!ready || !loaded.current) return;
-    // Server mode caches to SERVER_CACHE_KEY; local mode owns FILES_IDB_KEY. Keeping
-    // them separate is what lets "import my local data" still find the original copy.
-    const key = mode.current === 'server' ? SERVER_CACHE_KEY : FILES_IDB_KEY;
-    idbSet(key, files).catch(() => showToast('Could not save — storage error'));
+  // One serialized sync pass: diff CURRENT state vs baseline, run it, reconcile.
+  // - Serialized (syncBusy): overlapping passes could land PUTs out of order and
+  //   leave the server stale while the baseline records success.
+  // - Re-diffs latest state via filesRef (not a stale snapshot) when re-entered.
+  // - 401 => clearToken + reload once (password rotated mid-session).
+  // - Other failures => baseline keeps the failed ids (reconcileBaseline) AND a
+  //   retry timer re-runs the pass — a transient blip must not wait for the user's
+  //   next edit to be retried.
+  const filesRef = useRef<ImportFile[]>(files);
+  filesRef.current = files;
+  const runSync = useCallback(async () => {
     if (mode.current !== 'server') return;
-
-    const plan = diffFiles(baseline.current, files);
-    if (plan.upserts.length === 0 && plan.deletes.length === 0) return;
-    const snapshot = files;
-    const t = window.setTimeout(() => {
-      runSyncPlan(plan).then((failed) => {
+    if (syncBusy.current) {
+      syncAgain.current = true;
+      return;
+    }
+    syncBusy.current = true;
+    try {
+      do {
+        syncAgain.current = false;
+        const snapshot = filesRef.current;
+        const plan = diffFiles(baseline.current, snapshot);
+        if (plan.upserts.length === 0 && plan.deletes.length === 0) continue;
+        const failed = await runSyncPlan(plan);
+        if (failed.unauthorized) {
+          clearToken();
+          if (!sessionStorage.getItem('id-401-reloaded')) {
+            sessionStorage.setItem('id-401-reloaded', '1');
+            window.location.reload();
+          }
+          return;
+        }
         baseline.current = reconcileBaseline(baseline.current, snapshot, failed);
         if (failed.upserts.length || failed.deletes.length) {
           showToast('Some changes not saved to server — will retry');
+          if (retryTimer.current === null) {
+            retryTimer.current = window.setTimeout(() => {
+              retryTimer.current = null;
+              void runSync();
+            }, 8000);
+          }
         }
-      });
-    }, 400);
+      } while (syncAgain.current);
+    } finally {
+      syncBusy.current = false;
+    }
+  }, [showToast]);
+
+  // Persist on change. Write-through to IndexedDB in BOTH modes (offline cache +
+  // fallback so a server outage next session shows the last good copy). In server
+  // mode also debounce a serialized diff-sync. Guarded by loaded.current so a
+  // failed hydrate can't wipe anything.
+  useEffect(() => {
+    if (!ready || !loaded.current) return;
+    // Server mode caches to SERVER_CACHE_KEY; local mode writes back to whichever
+    // key it hydrated from (persistKey) — never cache-derived state into the
+    // browser's own importable FILES_IDB_KEY.
+    const key = mode.current === 'server' ? SERVER_CACHE_KEY : persistKey.current;
+    idbSet(key, files).catch(() => showToast('Could not save — storage error'));
+    if (mode.current !== 'server') return;
+
+    const t = window.setTimeout(() => void runSync(), 400);
     return () => window.clearTimeout(t);
-  }, [files, ready, showToast]);
+  }, [files, ready, showToast, runSync]);
+
+  // Tab close / navigate away within the debounce window: fire the pending diff as
+  // keepalive requests so the last edit isn't silently dropped.
+  useEffect(() => {
+    const flush = () => {
+      if (mode.current !== 'server') return;
+      const plan = diffFiles(baseline.current, filesRef.current);
+      if (plan.upserts.length || plan.deletes.length) flushPlanKeepalive(plan);
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, []);
 
   useEffect(() => {
     try {
@@ -357,7 +449,14 @@ export function StoreProvider({
     );
   }, [user]);
 
+  // Store-level guard (defense in depth behind the UI gate): in server mode these
+  // would diff-sync as mass DELETEs / demo-file PUTs and destroy the whole TEAM's
+  // shared data in Postgres. Local-only tools.
   const clearAll = useCallback(() => {
+    if (mode.current === 'server') {
+      showToast('Not available in shared mode');
+      return;
+    }
     setFiles([]);
     setUsers([]);
     signOut(); // full reset — also clears the signed-in user
@@ -365,6 +464,10 @@ export function StoreProvider({
   }, [signOut, showToast]);
 
   const resetDemo = useCallback(() => {
+    if (mode.current === 'server') {
+      showToast('Not available in shared mode');
+      return;
+    }
     setFiles(structuredClone(SEED_FILES));
     setUsers(structuredClone(USERS));
     showToast('Demo data restored');
@@ -376,30 +479,47 @@ export function StoreProvider({
   // view), re-ids each file with a fresh server id so it can't clobber existing
   // rows, imports, then refreshes from the server so this browser now shows the
   // whole shared set (including teammates').
+  const importBusy = useRef(false);
   const syncLocalToServer = useCallback(async (): Promise<number> => {
-    const local = (await idbGet<ImportFile[]>(FILES_IDB_KEY).catch(() => undefined)) ?? [];
-    if (local.length === 0) {
-      showToast('No files in this browser to send');
-      return 0;
+    // Concurrency guard (belt over the UI's `pushing` state): two overlapping calls
+    // would both read a non-empty local store and import everything twice.
+    if (importBusy.current) return 0;
+    importBusy.current = true;
+    try {
+      const local = (await idbGet<ImportFile[]>(FILES_IDB_KEY).catch(() => undefined)) ?? [];
+      if (local.length === 0) {
+        showToast('No files in this browser to send');
+        return 0;
+      }
+      const reided: ImportFile[] = [];
+      for (const f of local) {
+        const id = await reserveId(); // throws if server unreachable -> caller toasts
+        reided.push({ ...f, id, fileNumber: fileNo(id) });
+      }
+      await importFiles(reided);
+      // Idempotency guard: the moment the import commits, empty the local store so a
+      // double-click or a retry after a post-import network blip reads "nothing to
+      // send" instead of importing the same files again under new ids (duplicates).
+      await idbSet(FILES_IDB_KEY, []).catch(() => {});
+      // The import COMMITTED — from here we must end in server mode even if the
+      // refresh fails (else the persist effect would write the old files back into
+      // the just-cleared local key and arm a duplicate re-import).
+      let server: ImportFile[];
+      try {
+        server = await listFiles();
+      } catch {
+        server = reided; // best-effort view; reload pulls the full shared set
+      }
+      setFiles(server);
+      baseline.current = server;
+      mode.current = 'server';
+      setServerMode(true);
+      idbSet(SERVER_CACHE_KEY, server).catch(() => {});
+      showToast(`Sent ${reided.length} file${reided.length === 1 ? '' : 's'} to the shared server`);
+      return reided.length;
+    } finally {
+      importBusy.current = false;
     }
-    const reided: ImportFile[] = [];
-    for (const f of local) {
-      const id = await reserveId(); // throws if server unreachable -> caller toasts
-      reided.push({ ...f, id, fileNumber: fileNo(id) });
-    }
-    await importFiles(reided);
-    // Idempotency guard: the moment the import commits, empty the local store so a
-    // double-click or a retry after a post-import network blip reads "nothing to
-    // send" instead of importing the same files again under new ids (duplicates).
-    await idbSet(FILES_IDB_KEY, []).catch(() => {});
-    const server = await listFiles();
-    setFiles(server);
-    baseline.current = server;
-    mode.current = 'server';
-    setServerMode(true);
-    idbSet(SERVER_CACHE_KEY, server).catch(() => {});
-    showToast(`Sent ${reided.length} file${reided.length === 1 ? '' : 's'} to the shared server`);
-    return reided.length;
   }, [showToast]);
 
   const addUser = useCallback(
