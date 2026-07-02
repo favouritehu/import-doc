@@ -39,6 +39,7 @@ import {
   runSyncPlan,
   importFiles,
   reserveId,
+  uploadBlob,
   flushPlanKeepalive,
   ApiError,
   clearToken,
@@ -179,6 +180,9 @@ interface Store {
   resetDemo: () => void;
   /** Push the current in-browser files onto the shared server (explicit, not automatic). */
   syncLocalToServer: () => Promise<number>;
+  /** Persist an uploaded file: server storage in shared mode (returns a `srv:` ref),
+   *  inline data URL locally or if storage is down. Returns {fileName, fileUrl}. */
+  uploadFile: (f: File) => Promise<{ fileName: string; fileUrl: string }>;
   /** Download-ready JSON backup of all current files (for cross-device/site moves). */
   exportData: () => string;
   /** Add files from a backup as NEW entries (fresh ids — never overwrites existing). */
@@ -483,6 +487,31 @@ export function StoreProvider({
   // view), re-ids each file with a fresh server id so it can't clobber existing
   // rows, imports, then refreshes from the server so this browser now shows the
   // whole shared set (including teammates').
+  // Upload a document. Shared mode stores bytes on the server volume and keeps only
+  // a `srv:<key>` reference (so file bytes never bloat the DB rows); local mode — or
+  // any server-storage failure — falls back to an inline data URL so uploads never
+  // hard-break. Existing data: URLs keep working unchanged.
+  const readAsDataUrl = (f: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(f);
+    });
+  const uploadFile = useCallback(
+    async (f: File): Promise<{ fileName: string; fileUrl: string }> => {
+      if (mode.current === 'server') {
+        try {
+          return { fileName: f.name, fileUrl: await uploadBlob(f) };
+        } catch {
+          /* storage down -> inline fallback below */
+        }
+      }
+      return { fileName: f.name, fileUrl: await readAsDataUrl(f) };
+    },
+    [],
+  );
+
   // Backup / restore. Export is a plain JSON dump of the CURRENT files (run it on
   // whichever browser holds the data you want). Import ADDS them as new files with
   // fresh ids — so moving old localhost data into the deployed app never overwrites
@@ -1020,6 +1049,7 @@ export function StoreProvider({
       clearAll,
       resetDemo,
       syncLocalToServer,
+      uploadFile,
       exportData,
       importData,
       users,
@@ -1058,6 +1088,7 @@ export function StoreProvider({
       clearAll,
       resetDemo,
       syncLocalToServer,
+      uploadFile,
       exportData,
       importData,
       users,

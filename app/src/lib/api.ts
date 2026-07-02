@@ -97,6 +97,37 @@ export async function reserveId(): Promise<number> {
   return j.id;
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = String(r.result);
+      resolve(s.slice(s.indexOf(',') + 1)); // strip the data: prefix
+    };
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+}
+
+/** Upload a document to server storage. Returns a `srv:<key>` reference to persist
+ *  on the doc (bytes live on the volume, not in the DB). Throws on failure so the
+ *  caller can fall back to an inline data URL. */
+export async function uploadBlob(file: File): Promise<string> {
+  const dataBase64 = await fileToBase64(file);
+  const res = await req('/files/upload', {
+    method: 'POST',
+    body: JSON.stringify({ dataBase64, mime: file.type, name: file.name }),
+  });
+  const j = (await res.json()) as { key: string };
+  return `srv:${j.key}`;
+}
+
+/** Fetch a `srv:<key>` reference (with auth) as an object URL for preview/download. */
+export async function fetchBlobUrl(ref: string): Promise<string> {
+  const res = await req(`/files/blob/${ref.slice(4)}`);
+  return URL.createObjectURL(await res.blob());
+}
+
 export async function putFile(f: ImportFile): Promise<void> {
   await req(`/files/${f.id}`, { method: 'PUT', body: JSON.stringify(f) });
 }

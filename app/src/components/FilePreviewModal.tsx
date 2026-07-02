@@ -67,7 +67,7 @@ export function FilePreviewModal({
   invoiceId?: string;
   onClose: () => void;
 }) {
-  const { role, uploadDoc, approveDoc, flagDoc, requestCorrection, reuploadDoc, clearDoc, showToast } = useStore();
+  const { role, uploadDoc, approveDoc, flagDoc, requestCorrection, reuploadDoc, clearDoc, uploadFile, showToast } = useStore();
   const canApprove = RolePolicy.canApproveDoc(role);
   const canDelete = RolePolicy.canDelete(role);
   const canFin = RolePolicy.canSeeFinancials(role);
@@ -114,18 +114,15 @@ export function FilePreviewModal({
   };
   const aiCheckable = !!inv && (doc.status === 'uploaded' || doc.status === 'under_review' || doc.status === 'discrepant');
 
-  // Read as a data URL (not a blob URL) so the file persists to localStorage and
-  // re-renders after reload.
-  const readUrl = (f: File, cb: (url: string) => void) => {
-    const r = new FileReader();
-    r.onload = () => cb(typeof r.result === 'string' ? r.result : '');
-    r.onerror = () => showToast('Could not read the file — try again');
-    r.readAsDataURL(f);
-  };
+  // Store the file (server volume in shared mode, else inline) then record the ref.
   const doUpload = (f: File) =>
-    readUrl(f, (url) => uploadDoc(file.id, doc.type, { ...target, fileName: f.name, fileUrl: url }));
+    uploadFile(f)
+      .then(({ fileName, fileUrl }) => uploadDoc(file.id, doc.type, { ...target, fileName, fileUrl }))
+      .catch(() => showToast('Could not upload the file — try again'));
   const doReupload = (f: File) =>
-    readUrl(f, (url) => reuploadDoc(file.id, doc.type, { ...target, fileName: f.name, fileUrl: url }));
+    uploadFile(f)
+      .then(({ fileName, fileUrl }) => reuploadDoc(file.id, doc.type, { ...target, fileName, fileUrl }))
+      .catch(() => showToast('Could not upload the file — try again'));
 
   const actions = () => {
     if (flagging) {

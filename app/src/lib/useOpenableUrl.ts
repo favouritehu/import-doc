@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
+import { fetchBlobUrl } from './api';
 
-// Uploaded files are stored as `data:` URLs (so they persist to IndexedDB and
-// survive reload). But Chrome blocks top-level navigation AND iframes to `data:`
-// URLs (anti-phishing) — a stored PDF would refuse to open. So at view time we
-// convert the data URL into a short-lived blob object URL, which opens and embeds
-// for any MIME type (PDF included). Pass-through for http/blob URLs. The object
-// URL is revoked on unmount / when the source changes.
+// Turn a stored document reference into an openable URL:
+//  - `srv:<key>`  -> server-stored file: fetch WITH auth, hand back an object URL.
+//  - `data:` URL  -> legacy inline upload: Chrome blocks navigation/iframes to
+//                    data: URLs, so convert to a blob object URL.
+//  - http/blob    -> pass through.
+// The object URL is revoked on unmount / when the source changes.
 export function useOpenableUrl(src?: string | null): string | undefined {
   const [url, setUrl] = useState<string | undefined>(undefined);
   useEffect(() => {
@@ -13,6 +14,27 @@ export function useOpenableUrl(src?: string | null): string | undefined {
       setUrl(undefined);
       return;
     }
+
+    // Server-stored file — fetch with the bearer token, then object-URL it.
+    if (src.startsWith('srv:')) {
+      let objUrl: string | null = null;
+      let alive = true;
+      fetchBlobUrl(src)
+        .then((u) => {
+          if (alive) {
+            objUrl = u;
+            setUrl(u);
+          } else {
+            URL.revokeObjectURL(u);
+          }
+        })
+        .catch(() => alive && setUrl(undefined));
+      return () => {
+        alive = false;
+        if (objUrl) URL.revokeObjectURL(objUrl);
+      };
+    }
+
     if (!src.startsWith('data:')) {
       setUrl(src);
       return;

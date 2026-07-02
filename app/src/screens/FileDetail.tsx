@@ -948,6 +948,7 @@ function AddDocumentModal({
   onClose: () => void;
   onAdd: (d: AddDocInput) => void;
 }) {
+  const { uploadFile } = useStore();
   const [picked, setPicked] = useState<File | null>(null);
   const [name, setName] = useState('');
   const [typeValue, setTypeValue] = useState('other');
@@ -1013,25 +1014,25 @@ function AddDocumentModal({
     }
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!picked || !name.trim()) return;
-    const r = new FileReader();
-    r.onload = () => {
-      const fileUrl = typeof r.result === 'string' ? r.result : '';
-      const fileName = picked.name;
-      if (typeValue === 'other') {
-        onAdd({ type: `custom-${Date.now()}`, label: name.trim(), fileName, fileUrl });
-      } else if (typeValue.startsWith('inv:')) {
-        const [, invoiceId, type] = typeValue.split(':');
-        onAdd({ type, invoiceId, fileName, fileUrl });
-      } else {
-        onAdd({ type: typeValue.slice(5), fileName, fileUrl });
-      }
-      onClose();
-    };
-    // Without this a failed read left the modal open and silent (no feedback).
-    r.onerror = () => setAiNote('Could not read the file — pick it again.');
-    r.readAsDataURL(picked);
+    let up: { fileName: string; fileUrl: string };
+    try {
+      up = await uploadFile(picked); // server volume in shared mode, else inline
+    } catch {
+      setAiNote('Could not upload the file — pick it again.');
+      return;
+    }
+    const { fileName, fileUrl } = up;
+    if (typeValue === 'other') {
+      onAdd({ type: `custom-${Date.now()}`, label: name.trim(), fileName, fileUrl });
+    } else if (typeValue.startsWith('inv:')) {
+      const [, invoiceId, type] = typeValue.split(':');
+      onAdd({ type, invoiceId, fileName, fileUrl });
+    } else {
+      onAdd({ type: typeValue.slice(5), fileName, fileUrl });
+    }
+    onClose();
   };
 
   return (

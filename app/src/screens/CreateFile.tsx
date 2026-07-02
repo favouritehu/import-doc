@@ -79,7 +79,7 @@ function DateLabel({ text, value }: { text: string; value: string }) {
 
 export function CreateFile() {
   const nav = useNavigate();
-  const { createFromTemplate, createBlank, uploadDoc, users } = useStore();
+  const { createFromTemplate, createBlank, uploadDoc, uploadFile, users } = useStore();
   const [view, setView] = useState<'pick' | 'template' | 'blank' | 'ai' | 'quick'>('pick');
   const [tplId, setTplId] = useState<string | null>(null);
   // Double-submit guard: in server mode create awaits a network id-reservation, so
@@ -147,7 +147,10 @@ export function CreateFile() {
             users={users}
             onBack={() => setView('pick')}
             onCreate={(i) => once(() => createBlank(i))}
-            onAttachPi={(id, fileName, fileUrl) => uploadDoc(id, 'proforma_invoice', { fileName, fileUrl })}
+            onAttachPi={async (id, pi) => {
+              const { fileName, fileUrl } = await uploadFile(pi);
+              uploadDoc(id, 'proforma_invoice', { fileName, fileUrl });
+            }}
             onDone={(id) => nav(`/files/${id}`)}
           />
         )}
@@ -762,7 +765,7 @@ function QuickStartView({
   users: User[];
   onBack: () => void;
   onCreate: (i: BlankInput) => Promise<number | null>;
-  onAttachPi: (id: number, fileName: string, fileUrl: string) => void;
+  onAttachPi: (id: number, pi: File) => Promise<void>;
   onDone: (id: number) => void;
 }) {
   const [supplier, setSupplier] = useState('');
@@ -801,17 +804,14 @@ function QuickStartView({
     if (created === null) return; // double-click no-op (guarded upstream)
     const id = created;
     if (pi) {
-      const r = new FileReader();
-      r.onload = () => {
-        onAttachPi(id, pi.name, typeof r.result === 'string' ? r.result : '');
-        onDone(id);
-      };
-      // File already created — still navigate; the PI just didn't attach.
-      r.onerror = () => onDone(id);
-      r.readAsDataURL(pi);
-    } else {
-      onDone(id);
+      // File already created — attach the PI, but still navigate even if it fails.
+      try {
+        await onAttachPi(id, pi);
+      } catch {
+        /* ignore — file exists, PI just didn't attach */
+      }
     }
+    onDone(id);
   };
 
   return (
