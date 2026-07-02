@@ -21,6 +21,7 @@ export const NAV: NavDef[] = [
   { key: 'pending-docs', label: 'Pending Docs', path: '/pending-docs', roles: ['admin', 'import_manager'], badge: 'pending-docs' },
   { key: 'pending-payments', label: 'Pending Payments', path: '/pending-payments', roles: ['admin', 'accountant'], badge: 'pending-payments' },
   { key: 'cha', label: 'CHA Desk', path: '/cha-desk', roles: ['admin', 'import_manager'], badge: null },
+  { key: 'tracking', label: 'Tracking', path: '/tracking', roles: ['admin'], badge: null },
   { key: 'reports', label: 'Reports', path: '/reports', roles: ALL, badge: null },
   { key: 'settings', label: 'Settings', path: '/settings', roles: ALL, badge: null },
 ];

@@ -39,6 +39,7 @@ export interface TrackedRow {
   failed_reason: string | null;
   created_at: string;
   updated_at: string;
+  [k: string]: unknown; // satisfies the query<Record<string, unknown>> constraint
 }
 
 let ensured = false;

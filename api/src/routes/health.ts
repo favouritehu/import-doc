@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { dbConfigured, query } from '../db';
 import { aiStatus } from '../services/ai';
 import { authConfigured } from '../services/auth';
+import { t49Configured } from '../services/terminal49';
 
 export const health: FastifyPluginAsync = async (app) => {
   app.get('/health', async () => ({ status: 'ok', phase: 'B', service: 'import-desk-api' }));
@@ -29,6 +30,7 @@ export const health: FastifyPluginAsync = async (app) => {
       auth: { required: authConfigured() },
       db,
       ai: aiStatus(),
+      tracking: { configured: t49Configured() },
     };
   });
 };

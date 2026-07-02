@@ -12,6 +12,7 @@ import { notes } from './routes/notes';
 import { accessLinks } from './routes/access-links';
 import { reports } from './routes/reports';
 import { reminders } from './routes/reminders';
+import { tracking, trackingWebhook } from './routes/tracking';
 import { ai } from './routes/ai';
 
 export async function buildServer(): Promise<FastifyInstance> {
@@ -26,7 +27,11 @@ export async function buildServer(): Promise<FastifyInstance> {
   app.addHook('onRequest', async (req, reply) => {
     if (req.method === 'OPTIONS') return;
     const p = req.url.split('?')[0];
-    const guarded = p.startsWith('/files') || p.startsWith('/ai') || p.startsWith('/reminders');
+    const guarded =
+      p.startsWith('/files') ||
+      p.startsWith('/ai') ||
+      p.startsWith('/reminders') ||
+      p.startsWith('/tracking');
     if (!guarded) return;
     if (!tokenValid(bearerFrom(req.headers.authorization))) {
       return reply.code(401).send({ error: 'unauthorized' });
@@ -44,6 +49,8 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(accessLinks, { prefix: '/access-links' });
   await app.register(reports, { prefix: '/reports' });
   await app.register(reminders, { prefix: '/reminders' });
+  await app.register(tracking, { prefix: '/tracking' });
+  await app.register(trackingWebhook, { prefix: '/webhooks' });
 
   return app;
 }

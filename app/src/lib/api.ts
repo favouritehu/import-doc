@@ -128,6 +128,82 @@ export async function fetchBlobUrl(ref: string): Promise<string> {
   return URL.createObjectURL(await res.blob());
 }
 
+// ── Container tracking (Terminal49, slot-limited) ──────────────────────────
+export type TrackStatus = 'not_tracked' | 'queued' | 'active' | 'stopped' | 'completed' | 'failed';
+
+export interface TrackedRow {
+  local_shipment_id: string;
+  import_file_id: number | null;
+  bl_number: string | null;
+  booking_number: string | null;
+  container_number: string | null;
+  scac: string | null;
+  request_type: string | null;
+  request_number: string | null;
+  terminal49_shipment_id: string | null;
+  terminal49_status: TrackStatus;
+  last_event_at: string | null;
+  last_event_snapshot: TrackSnapshot | null;
+  started_tracking_at: string | null;
+  completed_at: string | null;
+  failed_reason: string | null;
+  created_at: string;
+}
+
+export interface TrackSnapshot {
+  shippingLine?: string;
+  portOfLading?: string;
+  portOfDischarge?: string;
+  podEta?: string;
+  podArrivedAt?: string;
+  vessel?: string;
+  status?: string;
+  containers?: { number?: string; podDischargedAt?: string; availableForPickup?: boolean; lastFreeDay?: string }[];
+}
+
+export interface TrackSummary {
+  limit: number;
+  active: number;
+  queued: number;
+  stopped: number;
+  completed: number;
+  failed: number;
+  not_tracked: number;
+}
+
+export interface TrackInput {
+  blNumber?: string;
+  bookingNumber?: string;
+  containerNumber?: string;
+  scac: string;
+  importFileId?: number;
+}
+
+export async function listTracking(): Promise<{ summary: TrackSummary; rows: TrackedRow[] }> {
+  const res = await req('/tracking');
+  return (await res.json()) as { summary: TrackSummary; rows: TrackedRow[] };
+}
+
+export async function addTracking(input: TrackInput): Promise<TrackedRow> {
+  const res = await req('/tracking', { method: 'POST', body: JSON.stringify(input) });
+  return ((await res.json()) as { row: TrackedRow }).row;
+}
+
+export async function stopTracking(id: string, status: 'stopped' | 'completed' = 'stopped'): Promise<TrackedRow> {
+  const res = await req(`/tracking/${id}/stop`, { method: 'POST', body: JSON.stringify({ status }) });
+  return ((await res.json()) as { row: TrackedRow }).row;
+}
+
+export async function refreshTracking(id: string): Promise<TrackedRow> {
+  const res = await req(`/tracking/${id}/refresh`, { method: 'POST' });
+  return ((await res.json()) as { row: TrackedRow }).row;
+}
+
+export async function activateNextTracking(): Promise<{ started: number; summary: TrackSummary }> {
+  const res = await req('/tracking/activate-next', { method: 'POST' });
+  return (await res.json()) as { started: number; summary: TrackSummary };
+}
+
 export async function putFile(f: ImportFile): Promise<void> {
   await req(`/files/${f.id}`, { method: 'PUT', body: JSON.stringify(f) });
 }
