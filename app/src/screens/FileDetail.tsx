@@ -9,6 +9,7 @@ import { PriorityBadge, StatusBadge } from '../components/Badge';
 import { ProgressStepper } from '../components/ProgressStepper';
 import { ShipmentTimeline } from '../components/ShipmentTimeline';
 import { DocumentChecklist, type DocGroup } from '../components/DocumentChecklist';
+import { ShipmentTracking } from '../components/ShipmentTracking';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { PaymentCard } from '../components/PaymentCard';
 import { DutyBreakupCard } from '../components/DutyBreakupCard';
@@ -435,6 +436,9 @@ function SummaryTab({
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <div className="lg:col-span-2">
+        <div className="mb-4">
+          <ShipmentTracking file={file} />
+        </div>
         <div className="rounded-card border border-border bg-white p-4 shadow-card">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="font-display text-sm font-bold text-ink">Shipment</h3>

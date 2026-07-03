@@ -210,6 +210,24 @@ export async function activateNextTracking(): Promise<{ started: number; summary
   return (await res.json()) as { started: number; summary: TrackSummary };
 }
 
+/** Start (or fetch existing) tracking for an import file — BL-driven, deduped per file. */
+export async function trackFromFile(input: {
+  importFileId: number;
+  blNumber?: string;
+  bookingNumber?: string;
+  containerNumber?: string;
+  scac: string;
+}): Promise<TrackedRow> {
+  const res = await req('/tracking/from-file', { method: 'POST', body: JSON.stringify(input) });
+  return ((await res.json()) as { row: TrackedRow }).row;
+}
+
+/** The tracking status for one import file, or null if not tracked. */
+export async function trackingForFile(fileId: number): Promise<TrackedRow | null> {
+  const res = await req(`/tracking/for-file/${fileId}`);
+  return ((await res.json()) as { row: TrackedRow | null }).row;
+}
+
 export async function putFile(f: ImportFile): Promise<void> {
   await req(`/files/${f.id}`, { method: 'PUT', body: JSON.stringify(f) });
 }

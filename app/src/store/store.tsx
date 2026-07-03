@@ -40,10 +40,12 @@ import {
   importFiles,
   reserveId,
   uploadBlob,
+  trackFromFile,
   flushPlanKeepalive,
   ApiError,
   clearToken,
 } from '../lib/api';
+import { scacFor } from '../lib/scac';
 
 // When mode/incoterm change, keep uploads but fix each doc's required flag and
 // swap bill_of_lading <-> awb for the new mode.
@@ -950,6 +952,15 @@ export function StoreProvider({
     return nextId(files);
   }, [files]);
 
+  // Auto-start Terminal49 tracking when a new file has a BL and a resolvable
+  // carrier (from the shipping-line name). Best-effort, respects the 10-slot queue.
+  const autoTrack = (f: ImportFile) => {
+    if (mode.current !== 'server') return;
+    const scac = scacFor(f.shippingLine);
+    if (!scac || !f.blAwb) return;
+    trackFromFile({ importFileId: f.id, blNumber: f.blAwb, scac }).catch(() => {});
+  };
+
   const createFromTemplate = useCallback(
     async (input: CreateFromTemplateInput, tpl: TemplateLike): Promise<number> => {
       const id = await allocId();
@@ -993,6 +1004,7 @@ export function StoreProvider({
         notes: [],
       };
       setFiles((prev) => [file, ...prev]);
+      autoTrack(file);
       showToast('Import file created');
       return id;
     },
@@ -1033,6 +1045,7 @@ export function StoreProvider({
         notes: [],
       };
       setFiles((prev) => [file, ...prev]);
+      autoTrack(file);
       showToast('Import file created');
       return id;
     },

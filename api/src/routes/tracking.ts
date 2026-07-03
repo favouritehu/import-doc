@@ -6,6 +6,8 @@ import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { DbNotConfigured } from '../db';
 import {
   addTracking,
+  trackByFile,
+  getByFileId,
   listTracked,
   summary,
   stopTracking,
@@ -41,6 +43,29 @@ export const tracking: FastifyPluginAsync = async (app) => {
     } catch (e) {
       if (guard(reply, e)) return reply;
       return reply.code(400).send({ error: 'bad_request', message: (e as Error).message });
+    }
+  });
+
+  // Start (or fetch) tracking for an import file — deduped per file, BL-driven.
+  app.post<{ Body: TrackInput & { importFileId: number } }>('/from-file', async (req, reply) => {
+    try {
+      if (typeof req.body?.importFileId !== 'number') {
+        return reply.code(400).send({ error: 'bad_request', message: 'importFileId required' });
+      }
+      return { row: await trackByFile(req.body) };
+    } catch (e) {
+      if (guard(reply, e)) return reply;
+      return reply.code(400).send({ error: 'bad_request', message: (e as Error).message });
+    }
+  });
+
+  // The tracking status for one import file (null if not tracked).
+  app.get<{ Params: { fileId: string } }>('/for-file/:fileId', async (req, reply) => {
+    try {
+      return { row: await getByFileId(Number(req.params.fileId)) };
+    } catch (e) {
+      if (guard(reply, e)) return reply;
+      throw e;
     }
   });
 

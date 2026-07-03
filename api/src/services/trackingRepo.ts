@@ -120,6 +120,29 @@ export async function getRow(id: string): Promise<TrackedRow | null> {
   return rows[0] ?? null;
 }
 
+/** The tracking row linked to an import file (if any). */
+export async function getByFileId(fileId: number): Promise<TrackedRow | null> {
+  await ensureTrackingSchema();
+  const { rows } = await query<TrackedRow>(
+    'SELECT * FROM tracked_shipments WHERE import_file_id = $1 ORDER BY created_at DESC LIMIT 1',
+    [fileId],
+  );
+  return rows[0] ?? null;
+}
+
+/** Track a shipment straight from its import file — deduped per file so re-saving
+ *  the file doesn't create duplicates. Retries a previously failed/untracked row. */
+export async function trackByFile(input: TrackInput & { importFileId: number }): Promise<TrackedRow> {
+  const existing = await getByFileId(input.importFileId);
+  if (existing) {
+    if (existing.terminal49_status === 'failed' || existing.terminal49_status === 'not_tracked') {
+      return tryActivate(existing);
+    }
+    return existing; // already active/queued/stopped/completed
+  }
+  return addTracking(input);
+}
+
 export async function summary(): Promise<{
   limit: number;
   active: number;
