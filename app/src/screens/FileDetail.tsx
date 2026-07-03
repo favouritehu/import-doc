@@ -713,6 +713,7 @@ function EditFileModal({
     mode: file.mode,
     incoterm: file.incoterm,
     blAwb: file.blAwb,
+    containerNo: file.containerNo ?? '',
     portLoading: file.portLoading,
     portArrival: file.portArrival,
     etd: toIso(file.etd),
@@ -774,6 +775,9 @@ function EditFileModal({
         </L>
         <L label="BL / AWB">
           <input value={f.blAwb} onChange={(e) => set({ blAwb: e.target.value })} className={inputCls} />
+        </L>
+        <L label="Container no (tracking)">
+          <input value={f.containerNo} onChange={(e) => set({ containerNo: e.target.value.toUpperCase() })} className={inputCls} placeholder="e.g. MSKU1234567" />
         </L>
         <L label="Port of loading">
           <input value={f.portLoading} onChange={(e) => set({ portLoading: e.target.value })} className={inputCls} />

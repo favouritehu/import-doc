@@ -119,6 +119,7 @@ export interface BlankInput {
   mode: Mode;
   incoterm: Incoterm;
   blAwb: string;
+  containerNo?: string;
   portLoading: string;
   portArrival: string;
   etd?: string;
@@ -957,8 +958,11 @@ export function StoreProvider({
   const autoTrack = (f: ImportFile) => {
     if (mode.current !== 'server') return;
     const scac = scacFor(f.shippingLine);
-    if (!scac || !f.blAwb) return;
-    trackFromFile({ importFileId: f.id, blNumber: f.blAwb, scac }).catch(() => {});
+    if (!scac) return;
+    const container = f.containerNo?.trim();
+    // Prefer the container number (most precise); fall back to the BL.
+    if (container) trackFromFile({ importFileId: f.id, containerNumber: container, scac }).catch(() => {});
+    else if (f.blAwb) trackFromFile({ importFileId: f.id, blNumber: f.blAwb, scac }).catch(() => {});
   };
 
   const createFromTemplate = useCallback(
@@ -1023,6 +1027,7 @@ export function StoreProvider({
         isPartial: false,
         invoices: input.invoices.map((d) => mkInvoice(d)),
         blAwb: input.blAwb,
+        containerNo: input.containerNo?.trim() || undefined,
         portLoading: input.portLoading,
         portArrival: input.portArrival,
         etd: input.etd?.trim() || undefined,

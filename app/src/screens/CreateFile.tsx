@@ -328,6 +328,7 @@ function BlankWizard({
   ]);
   const [ship, setShip] = useState({
     blAwb: '',
+    containerNo: '',
     portLoading: '',
     portArrival: '',
     etd: '',
@@ -446,6 +447,14 @@ function BlankWizard({
             <Field label="BL / AWB no">
               <input value={ship.blAwb} onChange={(e) => setShip({ ...ship, blAwb: e.target.value })} className={inputCls} />
             </Field>
+            <Field label="Container no (for tracking)">
+              <input
+                value={ship.containerNo}
+                onChange={(e) => setShip({ ...ship, containerNo: e.target.value.toUpperCase() })}
+                className={inputCls}
+                placeholder="e.g. MSKU1234567"
+              />
+            </Field>
             <Field label={<DateLabel text="ETD (departure)" value={ship.etd} />}>
               <input type="date" value={ship.etd} onChange={(e) => setShip({ ...ship, etd: e.target.value })} className={inputCls} />
             </Field>
@@ -563,6 +572,7 @@ function AiExtractView({
       mode: f.mode,
       incoterm: (f.incoterm as Incoterm) || 'FOB',
       blAwb: f.blAwb,
+      containerNo: f.containerNo,
       portLoading: f.portLoading,
       portArrival: f.portArrival,
       etd: f.etd,
@@ -662,6 +672,14 @@ function AiExtractView({
           </Field>
           <Field label="BL / AWB">
             <input value={f.blAwb} onChange={(e) => setFileField({ blAwb: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Container no (for tracking)">
+            <input
+              value={f.containerNo ?? ''}
+              onChange={(e) => setFileField({ containerNo: e.target.value.toUpperCase() })}
+              className={inputCls}
+              placeholder="e.g. MSKU1234567"
+            />
           </Field>
           <Field label="Port of loading">
             <input value={f.portLoading} onChange={(e) => setFileField({ portLoading: e.target.value })} className={inputCls} />

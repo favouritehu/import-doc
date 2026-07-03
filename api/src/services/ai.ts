@@ -157,6 +157,7 @@ export interface ExtractResult {
     mode: 'sea' | 'air';
     incoterm: string;
     blAwb: string;
+    containerNo: string;
     portLoading: string;
     portArrival: string;
     etd: string;
@@ -190,6 +191,7 @@ function coerceExtract(raw: any): ExtractResult {
       mode: coerceMode(f.mode),
       incoterm: coerceIncoterm(f.incoterm),
       blAwb: str(f.blAwb ?? f.bl ?? f.awb ?? f.blNumber),
+      containerNo: str(f.containerNo ?? f.container ?? f.containerNumber ?? f.container_no ?? f.containerNos),
       portLoading: str(f.portLoading ?? f.pol),
       portArrival: str(f.portArrival ?? f.poa ?? f.destination),
       etd: str(f.etd ?? f.departure ?? f.etdDate),
@@ -205,9 +207,9 @@ function coerceExtract(raw: any): ExtractResult {
 // ── Public tasks ──────────────────────────────────────────────────────
 
 const EXTRACT_PROMPT = `You read import shipping documents (commercial invoices, proforma invoices, packing lists, bills of lading). Extract structured data and OUTPUT JSON ONLY in this exact shape:
-{"file":{"country":"","mode":"sea|air","incoterm":"FOB|CIF|CFR|EXW|DAP|OTHER","blAwb":"","portLoading":"","portArrival":"","etd":"","eta":"","shippingLine":"","forwarder":"","cha":""},
+{"file":{"country":"","mode":"sea|air","incoterm":"FOB|CIF|CFR|EXW|DAP|OTHER","blAwb":"","containerNo":"","portLoading":"","portArrival":"","etd":"","eta":"","shippingLine":"","forwarder":"","cha":""},
  "invoices":[{"supplier":"","invoiceNumber":"","invoiceDate":"","product":"","qty":"","weight":"","hsn":"","amount":0,"currency":"USD|EUR|CNY|INR"}]}
-Rules: One file may contain SEVERAL invoices (possibly from different suppliers) — return each as a separate item in "invoices". amount is a number (no symbols/commas). "weight" is the gross (or net) weight WITH its unit, e.g. "1,250 kg" — empty if absent. Use empty string for unknown fields. Translate Chinese field values to English where natural, but keep supplier names and invoice numbers verbatim. Do not invent values.`;
+Rules: One file may contain SEVERAL invoices (possibly from different suppliers) — return each as a separate item in "invoices". amount is a number (no symbols/commas). "weight" is the gross (or net) weight WITH its unit, e.g. "1,250 kg" — empty if absent. containerNo = the container number from the bill of lading (e.g. MSKU1234567 — 4 letters then 7 digits); if several, the first; empty if absent. Use empty string for unknown fields. Translate Chinese field values to English where natural, but keep supplier names and invoice numbers verbatim. Do not invent values.`;
 
 // Allowed document types the classifier must choose from (must match app docs.ts).
 const DOC_TYPES = [

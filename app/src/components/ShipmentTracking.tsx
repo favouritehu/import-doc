@@ -64,19 +64,22 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
     }
   };
 
+  const container = file.containerNo?.trim();
   const start = () => {
     const s = scac.trim().toUpperCase();
     if (!s) {
       showToast('Pick the shipping line first');
       return;
     }
-    if (!file.blAwb && !file.invoices.length) {
-      showToast('Add a BL / AWB number to the file first');
+    if (!container && !file.blAwb) {
+      showToast('Add a container or BL / AWB number to the file first');
       return;
     }
-    void run(() =>
-      trackFromFile({ importFileId: file.id, blNumber: file.blAwb || undefined, scac: s }).then(setRow),
-    );
+    // Prefer the container number; fall back to the BL.
+    const payload = container
+      ? { importFileId: file.id, containerNumber: container, scac: s }
+      : { importFileId: file.id, blNumber: file.blAwb || undefined, scac: s };
+    void run(() => trackFromFile(payload).then(setRow));
   };
 
   return (
@@ -103,7 +106,8 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
       ) : (
         <div>
           <p className="text-xs text-muted">
-            Track this shipment on the carrier via its {file.blAwb ? `BL ${file.blAwb}` : 'BL / AWB'}. Live
+            Track this shipment on the carrier via its{' '}
+            {container ? `container ${container}` : file.blAwb ? `BL ${file.blAwb}` : 'container / BL'}. Live
             tracking is capped at 10 shipments — extra ones queue automatically.
           </p>
           <div className="mt-3 flex flex-wrap items-end gap-2">
@@ -130,8 +134,8 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Ship size={14} />} Start tracking
             </button>
           </div>
-          {!file.blAwb && (
-            <p className="mt-2 text-[11px] text-amber">No BL / AWB on this file yet — add it (Edit) for best results.</p>
+          {!container && !file.blAwb && (
+            <p className="mt-2 text-[11px] text-amber">No container or BL / AWB on this file yet — add it (Edit) for best results.</p>
           )}
         </div>
       )}

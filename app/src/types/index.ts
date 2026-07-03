@@ -130,6 +130,7 @@ export interface ImportFile {
   isPartial: boolean;
   invoices: Invoice[]; // >= 1
   blAwb: string;
+  containerNo?: string; // primary container number — preferred for live tracking
   portLoading: string;
   portArrival: string;
   etd?: string; // departure date, ISO YYYY-MM-DD (optional)

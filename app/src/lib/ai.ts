@@ -67,6 +67,7 @@ export interface ExtractResult {
     mode: 'sea' | 'air';
     incoterm: string;
     blAwb: string;
+    containerNo: string;
     portLoading: string;
     portArrival: string;
     etd: string;
