@@ -10,6 +10,7 @@ import { ProgressStepper } from '../components/ProgressStepper';
 import { ShipmentTimeline } from '../components/ShipmentTimeline';
 import { DocumentChecklist, type DocGroup } from '../components/DocumentChecklist';
 import { ShipmentTracking } from '../components/ShipmentTracking';
+import { BulkUpdateModal } from '../components/BulkUpdateModal';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { PaymentCard } from '../components/PaymentCard';
 import { DutyBreakupCard } from '../components/DutyBreakupCard';
@@ -76,6 +77,7 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
   const [addScope, setAddScope] = useState<{ invoiceId: string; supplier: string } | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [chaseOpen, setChaseOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const canFin = RolePolicy.canSeeFinancials(role);
   const canHsn = RolePolicy.canSeeHsn(role);
@@ -256,6 +258,9 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
                     <Sparkles size={15} /> Draft chase
                   </Button>
                 )}
+                <Button variant="ghost" onClick={() => setBulkOpen(true)}>
+                  <Upload size={15} /> Scan to update
+                </Button>
                 <Button onClick={() => setAddDoc(true)}>
                   <Plus size={15} /> Add document
                 </Button>
@@ -358,6 +363,7 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
         />
       )}
       {chaseOpen && <ChaseModal file={file} onClose={() => setChaseOpen(false)} />}
+      {bulkOpen && <BulkUpdateModal file={file} onClose={() => setBulkOpen(false)} />}
       {editInv && (
         <EditInvoiceModal
           inv={editInv}

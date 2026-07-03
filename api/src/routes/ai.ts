@@ -3,6 +3,7 @@ import {
   extract,
   extractFromText,
   classify,
+  classifyFromText,
   discrepancy,
   translate,
   chaseMessage,
@@ -55,6 +56,17 @@ export const ai: FastifyPluginAsync = async (app) => {
     if (!b?.text?.trim()) return reply.code(400).send({ error: 'no_text' });
     try {
       return await extractFromText(b.text);
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  // Classify a document from its OCR text (DeepSeek) -> doc type + slot hints.
+  app.post('/classify-text', async (req, reply) => {
+    const b = req.body as { text?: string };
+    if (!b?.text?.trim()) return reply.code(400).send({ error: 'no_text' });
+    try {
+      return await classifyFromText(b.text);
     } catch (e) {
       return fail(reply, e);
     }

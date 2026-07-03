@@ -115,6 +115,11 @@ export async function aiExtractText(text: string): Promise<ExtractResult> {
   return post<ExtractResult>('/ai/extract-text', { text });
 }
 
+/** Classify a document from its OCR TEXT into a doc type + slot hints (DeepSeek). */
+export async function aiClassifyText(text: string): Promise<ClassifyResult> {
+  return post<ClassifyResult>('/ai/classify-text', { text });
+}
+
 export async function aiDiscrepancy(
   invoice: Record<string, unknown>,
   refText: string,

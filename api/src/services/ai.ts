@@ -278,6 +278,18 @@ export async function extractFromText(text: string): Promise<ExtractResult> {
   return coerceExtract(raw);
 }
 
+/** Classify a document from its OCR TEXT (no vision needed) — for the bulk
+ *  "scan & update" flow when Gemini vision isn't available. */
+export async function classifyFromText(text: string): Promise<ClassifyResult> {
+  if (!textConfigured()) throw new AiError('ai_not_configured: set DEEPSEEK_API_KEY or GEMINI_API_KEY', 503);
+  const user = `DOCUMENT TEXT (extracted by OCR — may have noise):\n${text.slice(0, 6000)}`;
+  const raw =
+    textProvider() === 'deepseek'
+      ? await deepseekJson(CLASSIFY_PROMPT, user)
+      : await geminiJson([{ text: `${CLASSIFY_PROMPT}\n\n${user}` }]);
+  return coerceClassify(raw);
+}
+
 export interface Mismatch {
   field: string;
   invoiceValue: string;
