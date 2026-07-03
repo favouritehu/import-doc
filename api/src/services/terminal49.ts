@@ -48,8 +48,31 @@ async function t49<T = unknown>(
   clearTimeout(timer);
   const text = await res.text();
   const json = text ? safeJson(text) : null;
-  if (!res.ok) throw new T49Error(`terminal49_error_${res.status}`, res.status, json ?? text);
+  if (!res.ok) throw new T49Error(t49ErrorMessage(res.status, json), res.status, json ?? text);
   return json as T;
+}
+
+/** Human message from a JSON:API error body — what the USER sees as failed_reason. */
+function t49ErrorMessage(status: number, body: unknown): string {
+  const errs = (body as { errors?: { title?: string; detail?: string; source?: { pointer?: string } }[] })?.errors;
+  if (Array.isArray(errs) && errs.length) {
+    const parts = errs
+      .map((e) => e.detail || e.title || '')
+      .filter(Boolean)
+      .slice(0, 2);
+    if (parts.length) {
+      let msg = parts.join('; ');
+      // 422 on a tracking request is almost always a number/carrier mismatch —
+      // add the fix the user actually needs.
+      if (status === 422) {
+        msg += ' — check the carrier, and use the MASTER BL from the shipping line (not the forwarder house BL) or track by container number.';
+      }
+      return msg;
+    }
+  }
+  if (status === 401) return 'Terminal49 rejected the API key';
+  if (status === 422) return 'Terminal49 could not validate this number for that carrier — use the master BL or the container number.';
+  return `terminal49_error_${status}`;
 }
 
 function safeJson(s: string): unknown {

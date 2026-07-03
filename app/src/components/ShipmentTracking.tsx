@@ -2,8 +2,8 @@
 // Summary. If not yet tracking, one click starts it (BL + carrier pre-filled from
 // the file). Once tracking, shows vessel / ETA / ports / last event.
 
-import { useCallback, useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Ship, Square } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Loader2, Pencil, RefreshCw, Ship, Square } from 'lucide-react';
 import type { ImportFile } from '../types';
 import { useStore } from '../store/store';
 import { CARRIERS, scacFor, carrierName } from '../lib/scac';
@@ -32,6 +32,8 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [scac, setScac] = useState(() => scacFor(file.shippingLine) ?? '');
+  const [num, setNum] = useState(''); // manual number for edit-&-retry
+  const polls = useRef(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,6 +51,18 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
     else setLoading(false);
   }, [serverMode, load]);
 
+  // Terminal49 fetches from the carrier asynchronously — while a live row has no
+  // snapshot yet, quietly re-poll a few times so data appears without the user
+  // hammering Refresh.
+  useEffect(() => {
+    if (!row || row.terminal49_status !== 'active' || row.last_event_snapshot || polls.current >= 5) return;
+    const t = window.setTimeout(() => {
+      polls.current += 1;
+      refreshTracking(row.local_shipment_id).then(setRow).catch(() => {});
+    }, 20_000);
+    return () => window.clearTimeout(t);
+  }, [row]);
+
   // Tracking needs the shared server; hide entirely in per-browser mode.
   if (!serverMode) return null;
 
@@ -65,20 +79,27 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
   };
 
   const container = file.containerNo?.trim();
-  const start = () => {
+  const start = (overrideNum?: string) => {
     const s = scac.trim().toUpperCase();
     if (!s) {
       showToast('Pick the shipping line first');
       return;
     }
-    if (!container && !file.blAwb) {
+    const manual = overrideNum?.trim().toUpperCase();
+    if (!manual && !container && !file.blAwb) {
       showToast('Add a container or BL / AWB number to the file first');
       return;
     }
-    // Prefer the container number; fall back to the BL.
-    const payload = container
-      ? { importFileId: file.id, containerNumber: container, scac: s }
-      : { importFileId: file.id, blNumber: file.blAwb || undefined, scac: s };
+    // Manual entry wins; else prefer the container number; else the BL. A manual
+    // value shaped AAAA1234567 is a container number, anything else a BL.
+    const payload = manual
+      ? /^[A-Z]{4}\d{7}$/.test(manual)
+        ? { importFileId: file.id, containerNumber: manual, scac: s }
+        : { importFileId: file.id, blNumber: manual, scac: s }
+      : container
+        ? { importFileId: file.id, containerNumber: container, scac: s }
+        : { importFileId: file.id, blNumber: file.blAwb || undefined, scac: s };
+    polls.current = 0;
     void run(() => trackFromFile(payload).then(setRow));
   };
 
@@ -102,7 +123,49 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
           <Loader2 size={16} className="animate-spin" />
         </div>
       ) : row ? (
-        <Tracked row={row} busy={busy} onRefresh={() => run(() => refreshTracking(row.local_shipment_id))} onStop={() => run(() => stopTracking(row.local_shipment_id, 'completed'))} />
+        <>
+          <Tracked row={row} busy={busy} onRefresh={() => run(() => refreshTracking(row.local_shipment_id))} onStop={() => run(() => stopTracking(row.local_shipment_id, 'completed'))} />
+          {row.terminal49_status === 'failed' && (
+            <div className="mt-3 rounded-card border border-dashed border-divider bg-page p-3">
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-ink">
+                <Pencil size={12} /> Fix &amp; retry
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-muted">Shipping line</span>
+                  <select
+                    value={scac}
+                    onChange={(e) => setScac(e.target.value)}
+                    className="rounded-card border border-border px-3 py-2 text-sm outline-none focus:border-navy"
+                  >
+                    <option value="">Select carrier…</option>
+                    {CARRIERS.map((c) => (
+                      <option key={c.scac} value={c.scac}>
+                        {c.name} ({c.scac})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-muted">Master BL or container no</span>
+                  <input
+                    value={num}
+                    onChange={(e) => setNum(e.target.value.toUpperCase())}
+                    placeholder={row.request_number ?? ''}
+                    className="rounded-card border border-border px-3 py-2 font-mono text-sm outline-none focus:border-navy"
+                  />
+                </label>
+                <button
+                  onClick={() => start(num || undefined)}
+                  disabled={busy || !scac}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-blue disabled:opacity-50"
+                >
+                  {busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Retry
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <div>
           <p className="text-xs text-muted">
@@ -127,7 +190,7 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
               </select>
             </label>
             <button
-              onClick={start}
+              onClick={() => start()}
               disabled={busy || !scac}
               className="inline-flex items-center gap-1.5 rounded-full bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-blue disabled:opacity-50"
             >

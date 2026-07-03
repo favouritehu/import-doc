@@ -4,7 +4,7 @@
 // manually pull the queue forward.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Play, Square, Ship, AlertTriangle, Plus } from 'lucide-react';
+import { Loader2, RefreshCw, Play, Square, Ship, AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
 import { Button } from '../components/Button';
@@ -16,6 +16,7 @@ import {
   stopTracking,
   refreshTracking,
   activateNextTracking,
+  deleteTracking,
   ApiError,
   type TrackedRow,
   type TrackSummary,
@@ -163,6 +164,7 @@ export function Tracking() {
                           busy={busy === r.local_shipment_id}
                           onStop={(status) => act(r.local_shipment_id, () => stopTracking(r.local_shipment_id, status))}
                           onRefresh={() => act(r.local_shipment_id, () => refreshTracking(r.local_shipment_id))}
+                          onDelete={() => act(r.local_shipment_id, () => deleteTracking(r.local_shipment_id))}
                         />
                       ))}
                     </div>
@@ -182,11 +184,13 @@ function TrackRow({
   busy,
   onStop,
   onRefresh,
+  onDelete,
 }: {
   row: TrackedRow;
   busy: boolean;
   onStop: (status: 'stopped' | 'completed') => void;
   onRefresh: () => void;
+  onDelete: () => void;
 }) {
   const chip = CHIP[row.terminal49_status];
   const snap = row.last_event_snapshot;
@@ -240,6 +244,17 @@ function TrackRow({
                 <Square size={12} /> Stop
               </button>
             </>
+          )}
+          {(row.terminal49_status === 'failed' ||
+            row.terminal49_status === 'stopped' ||
+            row.terminal49_status === 'completed') && (
+            <button
+              onClick={() => onDelete()}
+              disabled={busy}
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] font-semibold text-medium hover:border-red hover:text-red disabled:opacity-50"
+            >
+              {busy ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Remove
+            </button>
           )}
         </div>
       </div>

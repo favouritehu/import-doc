@@ -13,6 +13,8 @@ import {
   stopTracking,
   refresh,
   activateNext,
+  deleteRow,
+  sweep,
   type TrackInput,
 } from '../services/trackingRepo';
 
@@ -98,6 +100,28 @@ export const tracking: FastifyPluginAsync = async (app) => {
     try {
       const started = await activateNext();
       return { started, summary: await summary() };
+    } catch (e) {
+      if (guard(reply, e)) return reply;
+      throw e;
+    }
+  });
+
+  // Remove a row entirely (failed/stopped/completed clutter; active rows are
+  // stopped on Terminal49 first). Frees + refills the slot.
+  app.delete<{ Params: { id: string } }>('/:id', async (req, reply) => {
+    try {
+      await deleteRow(req.params.id);
+      return { ok: true };
+    } catch (e) {
+      if (guard(reply, e)) return reply;
+      throw e;
+    }
+  });
+
+  // Manual sweep (the server also runs this on an interval).
+  app.post('/sweep', async (_req, reply) => {
+    try {
+      return await sweep();
     } catch (e) {
       if (guard(reply, e)) return reply;
       throw e;

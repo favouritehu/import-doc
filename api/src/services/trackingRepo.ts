@@ -131,12 +131,32 @@ export async function getByFileId(fileId: number): Promise<TrackedRow | null> {
 }
 
 /** Track a shipment straight from its import file — deduped per file so re-saving
- *  the file doesn't create duplicates. Retries a previously failed/untracked row. */
+ *  the file doesn't create duplicates. A failed row retries — and if the user
+ *  supplies a DIFFERENT number/carrier, the row is updated first so "edit & retry"
+ *  works instead of re-failing on the old input forever. */
 export async function trackByFile(input: TrackInput & { importFileId: number }): Promise<TrackedRow> {
   const existing = await getByFileId(input.importFileId);
   if (existing) {
     if (existing.terminal49_status === 'failed' || existing.terminal49_status === 'not_tracked') {
-      return tryActivate(existing);
+      const pick = pickRequest(input);
+      if (pick && input.scac?.trim()) {
+        await query(
+          `UPDATE tracked_shipments SET
+             bl_number = $2, booking_number = $3, container_number = $4, scac = $5,
+             request_type = $6, request_number = $7, updated_at = now()
+           WHERE local_shipment_id = $1`,
+          [
+            existing.local_shipment_id,
+            input.blNumber?.trim() || null,
+            input.bookingNumber?.trim() || null,
+            input.containerNumber?.trim() || null,
+            input.scac.trim(),
+            pick.requestType,
+            pick.requestNumber,
+          ],
+        );
+      }
+      return tryActivate((await getRow(existing.local_shipment_id))!);
     }
     return existing; // already active/queued/stopped/completed
   }
@@ -310,7 +330,24 @@ async function saveSnapshot(id: string, snap: ShipmentSnapshot): Promise<void> {
   );
 }
 
-/** Pull the latest from Terminal49 for one row (manual "Refresh"). */
+// A shipment is DONE (frees its live slot) when its containers are back empty, the
+// carrier says delivered, or it arrived more than AUTO_COMPLETE_DAYS ago.
+const AUTO_COMPLETE_DAYS = (): number => Number(process.env.TRACKING_AUTO_COMPLETE_DAYS || 7);
+
+function isShipmentDone(snap: ShipmentSnapshot): boolean {
+  const status = (snap.status ?? '').toLowerCase();
+  if (status.includes('delivered') || status.includes('empty')) return true;
+  if (snap.containers.length && snap.containers.every((c) => !!c.emptyReturnedAt)) return true;
+  if (snap.podArrivedAt) {
+    const arrived = Date.parse(snap.podArrivedAt);
+    if (!Number.isNaN(arrived) && Date.now() - arrived > AUTO_COMPLETE_DAYS() * 86_400_000) return true;
+  }
+  return false;
+}
+
+/** Pull the latest from Terminal49 for one row (Refresh / webhook / sweep). When
+ *  the shipment is finished, auto-complete it — frees the slot and pulls the next
+ *  queued shipment in, so the 10 live slots stay busy without manual cleanup. */
 export async function refresh(id: string): Promise<TrackedRow> {
   const row = await getRow(id);
   if (!row) throw new Error('not_found');
@@ -324,8 +361,53 @@ export async function refresh(id: string): Promise<TrackedRow> {
   if (shipmentId && t49Configured()) {
     const snap = await getShipmentSnapshot(shipmentId);
     await saveSnapshot(id, snap);
+    if (row.terminal49_status === 'active' && isShipmentDone(snap)) {
+      return stopTracking(id, 'completed'); // snapshots again, stops on T49, activates next
+    }
   }
   return (await getRow(id))!;
+}
+
+/** Background sweep: refresh stale/active rows, auto-complete the finished ones,
+ *  and fill any free slots from the queue. Called on an interval by the server —
+ *  keeps tracking data fresh even when no Terminal49 webhook is registered. */
+export async function sweep(): Promise<{ refreshed: number; started: number }> {
+  if (!t49Configured()) return { refreshed: 0, started: 0 };
+  await ensureTrackingSchema();
+  const STALE_MIN = Number(process.env.TRACKING_SWEEP_STALE_MIN || 120);
+  const { rows } = await query<TrackedRow>(
+    `SELECT * FROM tracked_shipments
+     WHERE terminal49_status = 'active'
+       AND (last_event_snapshot IS NULL OR updated_at < now() - ($1 || ' minutes')::interval)
+     ORDER BY updated_at ASC LIMIT 10`,
+    [String(STALE_MIN)],
+  );
+  let refreshed = 0;
+  for (const r of rows) {
+    try {
+      await refresh(r.local_shipment_id);
+      refreshed += 1;
+    } catch {
+      /* next sweep retries */
+    }
+  }
+  const started = await activateNext();
+  return { refreshed, started };
+}
+
+/** Remove a row entirely (dead/failed/old). An active row is stopped on T49 first. */
+export async function deleteRow(id: string): Promise<void> {
+  const row = await getRow(id);
+  if (!row) return;
+  if (row.terminal49_status === 'active' && row.terminal49_shipment_id && t49Configured()) {
+    try {
+      await stopShipmentTracking(row.terminal49_shipment_id);
+    } catch {
+      /* free our slot regardless */
+    }
+  }
+  await query('DELETE FROM tracked_shipments WHERE local_shipment_id = $1', [id]);
+  await activateNext();
 }
 
 /** Terminal49 webhook: find the row by shipment/container id, refresh its snapshot. */

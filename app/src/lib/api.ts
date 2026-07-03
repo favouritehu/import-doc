@@ -222,6 +222,11 @@ export async function trackFromFile(input: {
   return ((await res.json()) as { row: TrackedRow }).row;
 }
 
+/** Remove a tracking row entirely (active rows are stopped on Terminal49 first). */
+export async function deleteTracking(id: string): Promise<void> {
+  await req(`/tracking/${id}`, { method: 'DELETE' });
+}
+
 /** The tracking status for one import file, or null if not tracked. */
 export async function trackingForFile(fileId: number): Promise<TrackedRow | null> {
   const res = await req(`/tracking/for-file/${fileId}`);

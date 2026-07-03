@@ -64,6 +64,11 @@ services:
       TERMINAL49_API_KEY: ${TERMINAL49_API_KEY:-}
       TERMINAL49_ACTIVE_LIMIT: ${TERMINAL49_ACTIVE_LIMIT:-10}
       TERMINAL49_WEBHOOK_SECRET: ${TERMINAL49_WEBHOOK_SECRET:-}
+      # Tracking auto-rotation: sweep interval + when an arrived shipment is
+      # considered done (auto-completed to free its live slot).
+      TRACKING_SWEEP_MINUTES: ${TRACKING_SWEEP_MINUTES:-30}
+      TRACKING_AUTO_COMPLETE_DAYS: ${TRACKING_AUTO_COMPLETE_DAYS:-7}
+      TRACKING_SWEEP_STALE_MIN: ${TRACKING_SWEEP_STALE_MIN:-120}
 
 volumes:
   uploads:
