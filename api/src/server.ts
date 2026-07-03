@@ -5,6 +5,7 @@ import { tokenValid, bearerFrom } from './services/auth';
 import { health } from './routes/health';
 import { auth } from './routes/auth';
 import { files } from './routes/files';
+import { users } from './routes/users';
 import { documents } from './routes/documents';
 import { payments } from './routes/payments';
 import { cha } from './routes/cha';
@@ -29,6 +30,7 @@ export async function buildServer(): Promise<FastifyInstance> {
     const p = req.url.split('?')[0];
     const guarded =
       p.startsWith('/files') ||
+      p.startsWith('/users') ||
       p.startsWith('/ai') ||
       p.startsWith('/reminders') ||
       p.startsWith('/tracking');
@@ -42,6 +44,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(auth, { prefix: '/auth' });
   await app.register(ai, { prefix: '/ai' });
   await app.register(files, { prefix: '/files' });
+  await app.register(users, { prefix: '/users' });
   await app.register(documents, { prefix: '/documents' });
   await app.register(payments, { prefix: '/payments' });
   await app.register(cha, { prefix: '/cha' });

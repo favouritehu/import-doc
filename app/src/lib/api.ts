@@ -4,7 +4,7 @@
 //
 // The token also guards the AI routes, so ai.ts pulls authHeader() from here.
 
-import type { ImportFile } from '../types';
+import type { ImportFile, User } from '../types';
 import type { SyncPlan, SyncFailures } from './sync';
 
 const API = ((import.meta.env.VITE_API_URL as string) || 'http://localhost:8787').replace(/\/$/, '');
@@ -132,6 +132,20 @@ export async function uploadBlob(file: File): Promise<string> {
 export async function fetchBlobUrl(ref: string): Promise<string> {
   const res = await req(`/files/blob/${ref.slice(4)}`);
   return URL.createObjectURL(await res.blob());
+}
+
+// ── Shared team profiles (pick your name on any device, no re-creating) ────
+export async function listUsersRemote(): Promise<User[]> {
+  const res = await req('/users');
+  return ((await res.json()) as { users: User[] }).users ?? [];
+}
+
+export async function putUserRemote(u: User): Promise<void> {
+  await req(`/users/${u.id}`, { method: 'PUT', body: JSON.stringify(u) });
+}
+
+export async function deleteUserRemote(id: number): Promise<void> {
+  await req(`/users/${id}`, { method: 'DELETE' });
 }
 
 // Is a live tracking API (Terminal49) configured on the server? Cached — used

@@ -25,11 +25,19 @@ const inputCls =
   'w-full rounded-card border border-border px-3 py-2.5 text-sm text-ink outline-none focus:border-navy placeholder:text-faint';
 
 export function Welcome() {
-  const { signIn } = useStore();
+  const { signIn, users } = useStore();
   const nav = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('admin');
+  // Shared profiles exist -> default to "pick your name"; the form is opt-in.
+  const [creating, setCreating] = useState(false);
+  const showPicker = users.length > 0 && !creating;
+
+  const pick = (u: User) => {
+    signIn(u);
+    nav('/', { replace: true });
+  };
 
   const valid = name.trim().length > 1 && /\S+@\S+\.\S+/.test(email);
 
@@ -57,6 +65,37 @@ export function Welcome() {
           <p className="text-sm text-white/60">Favourite Fab · Import Control Tower</p>
         </div>
 
+        {showPicker ? (
+          <div className="rounded-xl2 bg-white p-5 text-ink shadow-modal">
+            <h2 className="font-display text-base font-bold text-ink">Who are you?</h2>
+            <p className="mt-0.5 text-xs text-muted">Tap your profile — it follows you on every device.</p>
+            <div className="mt-4 flex flex-col gap-2">
+              {users.map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => pick(u)}
+                  className="flex items-center gap-3 rounded-card border border-border p-3 text-left transition hover:border-navy"
+                >
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-navy text-xs font-bold text-white">
+                    {u.initials}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-ink">{u.name}</span>
+                    <span className="block text-xs text-muted">
+                      {u.role === 'admin' ? 'Owner' : u.role === 'accountant' ? 'Accountant' : 'Import Manager'}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setCreating(true)}
+              className="mt-4 w-full rounded-full border border-border py-2.5 text-sm font-semibold text-medium transition hover:border-navy hover:text-navy"
+            >
+              + New profile
+            </button>
+          </div>
+        ) : (
         <div className="rounded-xl2 bg-white p-5 text-ink shadow-modal">
           <h2 className="font-display text-base font-bold text-ink">Create your account</h2>
           <p className="mt-0.5 text-xs text-muted">Set up your profile to start tracking imports.</p>
@@ -109,11 +148,19 @@ export function Welcome() {
           >
             Get started <ArrowRight size={16} />
           </button>
+          {users.length > 0 && (
+            <button
+              onClick={() => setCreating(false)}
+              className="mt-3 w-full rounded-full border border-border py-2.5 text-sm font-semibold text-medium transition hover:border-navy hover:text-navy"
+            >
+              ← Pick an existing profile
+            </button>
+          )}
         </div>
+        )}
 
         <p className="mt-5 text-center text-[11px] text-white/45">
-          Phase A — your profile is saved in this browser. Google sign-in &amp; real accounts wire
-          in Phase B.
+          One team password protects the app; profiles are shared across devices.
         </p>
       </div>
     </div>

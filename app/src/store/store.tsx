@@ -42,6 +42,9 @@ import {
   uploadBlob,
   trackFromFile,
   flushPlanKeepalive,
+  listUsersRemote,
+  putUserRemote,
+  deleteUserRemote,
   ApiError,
   clearToken,
 } from '../lib/api';
@@ -257,6 +260,8 @@ export function StoreProvider({
     } catch {
       /* ignore */
     }
+    // Keep the shared profile list up to date (role switches included).
+    if (mode.current === 'server') putUserRemote(u).catch(() => {});
   }, []);
 
   const signOut = useCallback(() => {
@@ -316,6 +321,18 @@ export function StoreProvider({
         // Mirror to the CACHE key only — never the primary local store, so an empty
         // server can't wipe this browser's Phase-A data before the user imports it.
         idbSet(SERVER_CACHE_KEY, server).catch(() => {});
+        // Shared team profiles: merge the server list in (server wins by id) so a
+        // new device offers "pick your name" instead of re-creating the profile.
+        listUsersRemote()
+          .then((remote) => {
+            if (!alive || remote.length === 0) return;
+            setUsers((prev) => {
+              const byId = new Map(prev.map((u) => [u.id, u]));
+              for (const u of remote) byId.set(u.id, u);
+              return [...byId.values()];
+            });
+          })
+          .catch(() => {});
       } catch (e) {
         if (e instanceof ApiError && e.kind === 'unauthorized') {
           // Token stale/expired — drop it so the App-level gate shows the login.
@@ -617,21 +634,19 @@ export function StoreProvider({
 
   const addUser = useCallback(
     (input: { name: string; email: string; role: Role }) => {
-      setUsers((prev) => {
-        const id = prev.reduce((m, u) => Math.max(m, u.id), 1000) + 1;
-        const initials =
-          input.name
-            .trim()
-            .split(/\s+/)
-            .map((w) => w[0])
-            .slice(0, 2)
-            .join('')
-            .toUpperCase() || 'U';
-        return [
-          ...prev,
-          { id, name: input.name.trim(), email: input.email.trim(), role: input.role, initials },
-        ];
-      });
+      const initials =
+        input.name
+          .trim()
+          .split(/\s+/)
+          .map((w) => w[0])
+          .slice(0, 2)
+          .join('')
+          .toUpperCase() || 'U';
+      // Time-based id: unique across devices (a counter would collide when two
+      // devices add profiles independently).
+      const u: User = { id: Date.now(), name: input.name.trim(), email: input.email.trim(), role: input.role, initials };
+      setUsers((prev) => [...prev, u]);
+      if (mode.current === 'server') putUserRemote(u).catch(() => {});
       showToast('User added');
     },
     [showToast],
@@ -640,6 +655,7 @@ export function StoreProvider({
   const removeUser = useCallback(
     (id: number) => {
       setUsers((prev) => prev.filter((u) => u.id !== id));
+      if (mode.current === 'server') deleteUserRemote(id).catch(() => {});
       showToast('User removed');
     },
     [showToast],
