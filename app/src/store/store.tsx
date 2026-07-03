@@ -467,6 +467,17 @@ export function StoreProvider({
     }
   }, [users]);
 
+  // Seed the shared profile list: when the server connects, push every profile
+  // this device already knows (idempotent upserts). Without this, profiles created
+  // BEFORE profiles became shared never reach the server and new devices see an
+  // empty picker.
+  useEffect(() => {
+    if (!serverMode) return;
+    for (const u of users) putUserRemote(u).catch(() => {});
+    // Intentionally only on connect — not on every users change (mutations sync themselves).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverMode]);
+
   // Keep the signed-in user present in the users list (and their role in sync).
   useEffect(() => {
     if (!user) return;
