@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Cloud, CloudOff, Download, LogOut, RotateCcw, Trash2, Upload, UploadCloud, Loader2 } from 'lucide-react';
+import { AlertTriangle, Cloud, CloudOff, Download, LogOut, Pencil, RotateCcw, Trash2, Upload, UploadCloud, Loader2 } from 'lucide-react';
 import type { ImportFile } from '../types';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
@@ -14,8 +14,9 @@ import { useStore } from '../store/store';
 import type { Role } from '../types';
 
 export function Settings() {
-  const { role, user, users, serverMode, syncLocalToServer, exportData, importData, showToast, signOut, clearAll, resetDemo, addUser, removeUser } =
+  const { role, user, users, serverMode, syncLocalToServer, exportData, importData, showToast, signIn, signOut, clearAll, resetDemo, addUser, removeUser } =
     useStore();
+  const [editProfile, setEditProfile] = useState(false);
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const [confirm, setConfirm] = useState<'clear' | 'reset' | null>(null);
@@ -101,15 +102,23 @@ export function Settings() {
                 </div>
               </div>
             </div>
-            <button
-              onClick={() => {
-                signOut();
-                nav('/welcome', { replace: true });
-              }}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-medium hover:border-red hover:text-red"
-            >
-              <LogOut size={14} /> Sign out
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                onClick={() => setEditProfile(true)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-medium hover:border-navy hover:text-navy"
+              >
+                <Pencil size={13} /> Edit
+              </button>
+              <button
+                onClick={() => {
+                  signOut();
+                  nav('/welcome', { replace: true });
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-medium hover:border-red hover:text-red"
+              >
+                <LogOut size={14} /> Sign out
+              </button>
+            </div>
           </div>
         )}
         <div className="mb-4 flex items-center justify-between gap-3">
@@ -293,6 +302,25 @@ export function Settings() {
         </Modal>
       )}
       {addOpen && <AddUserModal onClose={() => setAddOpen(false)} onAdd={addUser} />}
+      {editProfile && user && (
+        <EditProfileModal
+          user={user}
+          onClose={() => setEditProfile(false)}
+          onSave={(patch) => {
+            const initials =
+              patch.name
+                .trim()
+                .split(/\s+/)
+                .map((w) => w[0])
+                .slice(0, 2)
+                .join('')
+                .toUpperCase() || 'U';
+            // Same id — signIn updates this device, the shared list, and the server.
+            signIn({ ...user, ...patch, name: patch.name.trim(), email: patch.email.trim(), initials });
+            showToast('Profile updated');
+          }}
+        />
+      )}
     </>
   );
 }
@@ -302,6 +330,73 @@ const ADD_ROLES: { key: Role; label: string }[] = [
   { key: 'import_manager', label: 'Import Manager' },
   { key: 'accountant', label: 'Accountant' },
 ];
+
+function EditProfileModal({
+  user,
+  onClose,
+  onSave,
+}: {
+  user: { name: string; email: string; role: Role };
+  onClose: () => void;
+  onSave: (patch: { name: string; email: string; role: Role }) => void;
+}) {
+  const [name, setName] = useState(user.name);
+  const [email, setEmail] = useState(user.email);
+  const [role, setRole] = useState<Role>(user.role);
+  const valid = name.trim().length > 1 && /\S+@\S+\.\S+/.test(email);
+  const inp = 'w-full rounded-card border border-border px-3 py-2.5 text-sm outline-none focus:border-navy';
+  return (
+    <Modal
+      title="Edit profile"
+      subtitle="Changes follow you on every device"
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!valid}
+            onClick={() => {
+              onSave({ name, email, role });
+              onClose();
+            }}
+          >
+            Save
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-3">
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-muted">Full name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} className={inp} />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-muted">Email</span>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" className={inp} />
+        </label>
+        <div>
+          <span className="mb-1 block text-xs font-semibold text-muted">Role</span>
+          <div className="flex flex-wrap gap-1 rounded-card bg-page p-1">
+            {ADD_ROLES.map((r) => (
+              <button
+                key={r.key}
+                onClick={() => setRole(r.key)}
+                className={cx(
+                  'flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition',
+                  role === r.key ? 'bg-navy text-white' : 'text-muted hover:text-ink',
+                )}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 function AddUserModal({
   onClose,

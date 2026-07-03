@@ -14,6 +14,8 @@ import { SlideOver } from './Overlay';
 
 const isImage = (name?: string | null) => !!name && /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name);
 const isPdf = (name?: string | null) => !!name && /\.pdf$/i.test(name);
+// Phone browsers render a blank box for PDFs in iframes — treat them separately.
+const isMobileUa = () => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 const LABEL_VARIANTS = {
   primary: 'bg-navy text-white hover:bg-blue',
@@ -244,7 +246,22 @@ export function FilePreviewModal({
           {isImage(doc.fileName) ? (
             <img src={openUrl} alt={doc.fileName ?? ''} className="max-h-72 w-full rounded-card border border-border object-contain bg-page" />
           ) : isPdf(doc.fileName) ? (
-            <iframe title={doc.fileName ?? 'pdf'} src={openUrl} className="h-72 w-full rounded-card border border-border" />
+            // Phones can't render PDFs inside an iframe (blank on iOS/Android) —
+            // give them a big open button; desktop keeps the inline preview.
+            isMobileUa() ? (
+              <a
+                href={openUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="grid place-items-center gap-1 rounded-card border border-dashed border-divider bg-page py-8 text-center"
+              >
+                <FileText size={22} className="text-navy" />
+                <span className="text-sm font-semibold text-navy">Open PDF</span>
+                <span className="text-[11px] text-muted">{doc.fileName}</span>
+              </a>
+            ) : (
+              <iframe title={doc.fileName ?? 'pdf'} src={openUrl} className="h-72 w-full rounded-card border border-border" />
+            )
           ) : (
             <div className="rounded-card border border-border bg-page p-4 text-sm text-muted">File attached — tap Open to view.</div>
           )}

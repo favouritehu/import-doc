@@ -12,7 +12,6 @@ import { FileDetail } from './screens/FileDetail';
 import { PendingDocs } from './screens/PendingDocs';
 import { PendingPayments } from './screens/PendingPayments';
 import { ChaDesk } from './screens/ChaDesk';
-import { Tracking } from './screens/Tracking';
 import { Reports } from './screens/Reports';
 import { Settings } from './screens/Settings';
 import { Alerts } from './screens/Alerts';
@@ -47,7 +46,6 @@ export default function App() {
         <Route path="/pending-docs" element={<PendingDocs />} />
         <Route path="/pending-payments" element={<PendingPayments />} />
         <Route path="/cha-desk" element={<ChaDesk />} />
-        <Route path="/tracking" element={<Tracking />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/alerts" element={<Alerts />} />
