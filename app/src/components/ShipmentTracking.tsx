@@ -3,7 +3,7 @@
 // the file). Once tracking, shows vessel / ETA / ports / last event.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Pencil, RefreshCw, Ship, Square } from 'lucide-react';
+import { Loader2, Pencil, RefreshCw, Ship, Square, Trash2 } from 'lucide-react';
 import type { ImportFile } from '../types';
 import { useStore } from '../store/store';
 import { CARRIERS, scacFor, carrierName } from '../lib/scac';
@@ -12,6 +12,7 @@ import {
   trackFromFile,
   refreshTracking,
   stopTracking,
+  deleteTracking,
   ApiError,
   type TrackedRow,
   type TrackStatus,
@@ -124,7 +125,18 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
         </div>
       ) : row ? (
         <>
-          <Tracked row={row} busy={busy} onRefresh={() => run(() => refreshTracking(row.local_shipment_id))} onStop={() => run(() => stopTracking(row.local_shipment_id, 'completed'))} />
+          <Tracked
+            row={row}
+            busy={busy}
+            onRefresh={() => run(() => refreshTracking(row.local_shipment_id))}
+            onStop={() => run(() => stopTracking(row.local_shipment_id, 'completed'))}
+            onDelete={() =>
+              run(async () => {
+                await deleteTracking(row.local_shipment_id);
+                setRow(null);
+              })
+            }
+          />
           {row.terminal49_status === 'failed' && (
             <div className="mt-3 rounded-card border border-dashed border-divider bg-page p-3">
               <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-ink">
@@ -211,11 +223,13 @@ function Tracked({
   busy,
   onRefresh,
   onStop,
+  onDelete,
 }: {
   row: TrackedRow;
   busy: boolean;
   onRefresh: () => void;
   onStop: () => void;
+  onDelete: () => void;
 }) {
   const s = row.last_event_snapshot;
   return (
@@ -256,6 +270,17 @@ function Tracked({
             className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold text-medium hover:border-red hover:text-red disabled:opacity-50"
           >
             <Square size={12} /> Stop
+          </button>
+        )}
+        {(row.terminal49_status === 'stopped' ||
+          row.terminal49_status === 'completed' ||
+          row.terminal49_status === 'failed') && (
+          <button
+            onClick={onDelete}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold text-medium hover:border-red hover:text-red disabled:opacity-50"
+          >
+            <Trash2 size={12} /> Remove
           </button>
         )}
       </div>
