@@ -134,6 +134,18 @@ export async function fetchBlobUrl(ref: string): Promise<string> {
   return URL.createObjectURL(await res.blob());
 }
 
+// Is a live tracking API (Terminal49) configured on the server? Cached — used
+// to hide the paid-tracking UI when the desk runs free-carrier-pages only.
+let t49ConfCache: Promise<boolean> | null = null;
+export function trackingConfigured(): Promise<boolean> {
+  if (!t49ConfCache) {
+    t49ConfCache = fetch(`${API}/status`)
+      .then(async (r) => !!((await r.json()) as { tracking?: { configured?: boolean } }).tracking?.configured)
+      .catch(() => false);
+  }
+  return t49ConfCache;
+}
+
 // ── Container tracking (Terminal49, slot-limited) ──────────────────────────
 export type TrackStatus = 'not_tracked' | 'queued' | 'active' | 'stopped' | 'completed' | 'failed';
 

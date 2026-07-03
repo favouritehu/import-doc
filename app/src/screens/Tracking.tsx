@@ -17,6 +17,7 @@ import {
   refreshTracking,
   activateNextTracking,
   deleteTracking,
+  trackingConfigured,
   ApiError,
   type TrackedRow,
   type TrackSummary,
@@ -39,6 +40,7 @@ export function Tracking() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // row id or global action
+  const [configured, setConfigured] = useState(true); // live tracking API present?
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +61,7 @@ export function Tracking() {
 
   useEffect(() => {
     void load();
+    trackingConfigured().then(setConfigured).catch(() => setConfigured(false));
   }, [load]);
 
   const act = async (label: string, fn: () => Promise<unknown>) => {
@@ -141,7 +144,17 @@ export function Tracking() {
               </div>
             )}
 
-            <AddTrackingForm busy={busy === 'add'} onAdd={(input) => act('add', () => addTracking(input))} />
+            {!configured && (
+              <div className="mb-4 rounded-card border border-border bg-white p-4 text-xs text-medium shadow-card">
+                <span className="font-bold text-ink">Free carrier tracking is in use.</span> No tracking API is
+                configured — track each shipment from its file: <span className="font-semibold">Open tracking</span> on
+                the carrier's page, then send it back with the Chrome extension (or Paste update). Costs nothing,
+                works for every carrier.
+              </div>
+            )}
+            {configured && (
+              <AddTrackingForm busy={busy === 'add'} onAdd={(input) => act('add', () => addTracking(input))} />
+            )}
 
             {loading ? (
               <div className="mt-6 grid place-items-center py-10 text-muted">

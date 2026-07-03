@@ -1302,6 +1302,9 @@ function ChaseModal({ file, onClose }: { file: ImportFile; onClose: () => void }
 const UPDATE_LABELS: Record<keyof UpdateFields, string> = {
   etd: 'ETD (departure)',
   eta: 'ETA (arrival)',
+  arrivedOn: 'Arrived on',
+  vessel: 'Vessel',
+  latestEvent: 'Latest event',
   blAwb: 'BL / AWB',
   shippingLine: 'Shipping line',
   forwarder: 'Forwarder',
@@ -1345,7 +1348,8 @@ function PasteUpdateModal({
   const apply = () => {
     const patch: Partial<ImportFile> = {};
     entries.forEach(([k, v]) => {
-      if (accepted[k]) (patch as Record<string, unknown>)[k] = v;
+      // latestEvent is a tracking field stored as lastTrackingEvent on the file.
+      if (accepted[k]) (patch as Record<string, unknown>)[k === 'latestEvent' ? 'lastTrackingEvent' : k] = v;
     });
     if (Object.keys(patch).length) onApply(patch);
     onClose();

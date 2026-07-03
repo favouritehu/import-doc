@@ -149,6 +149,9 @@ export async function aiChase(payload: ChasePayload): Promise<string> {
 export interface UpdateFields {
   etd?: string;
   eta?: string;
+  arrivedOn?: string;
+  vessel?: string;
+  latestEvent?: string;
   blAwb?: string;
   shippingLine?: string;
   forwarder?: string;

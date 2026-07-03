@@ -17,6 +17,7 @@ import {
   sweep,
   type TrackInput,
 } from '../services/trackingRepo';
+import { applyCapture } from '../services/capture';
 
 function guard(reply: FastifyReply, e: unknown): boolean {
   if (e instanceof DbNotConfigured) {
@@ -103,6 +104,19 @@ export const tracking: FastifyPluginAsync = async (app) => {
     } catch (e) {
       if (guard(reply, e)) return reply;
       throw e;
+    }
+  });
+
+  // One-click capture (Chrome extension / paste): tracking-page text in -> AI
+  // extract -> auto-match the shipment by container/BL on the page -> update it.
+  app.post<{ Body: { text?: string; url?: string } }>('/capture', async (req, reply) => {
+    const text = req.body?.text ?? '';
+    if (text.trim().length < 40) return reply.code(400).send({ error: 'no_text', message: 'No readable tracking text' });
+    try {
+      return await applyCapture(text);
+    } catch (e) {
+      if (guard(reply, e)) return reply;
+      return reply.code(400).send({ error: 'capture_failed', message: (e as Error).message });
     }
   });
 

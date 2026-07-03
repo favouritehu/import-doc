@@ -3,16 +3,22 @@
 // the file). Once tracking, shows vessel / ETA / ports / last event.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Pencil, RefreshCw, Ship, Square, Trash2 } from 'lucide-react';
+import { ClipboardList, ExternalLink, Loader2, Pencil, RefreshCw, Ship, Square, Trash2 } from 'lucide-react';
 import type { ImportFile } from '../types';
 import { useStore } from '../store/store';
 import { CARRIERS, scacFor, carrierName } from '../lib/scac';
+import { carrierTrackingUrl } from '../lib/trackingLinks';
+import { aiUpdate, type UpdateFields } from '../lib/ai';
+import { Modal } from './Overlay';
+import { Button } from './Button';
+import { TODAY } from '../store/store';
 import {
   trackingForFile,
   trackFromFile,
   refreshTracking,
   stopTracking,
   deleteTracking,
+  trackingConfigured,
   ApiError,
   type TrackedRow,
   type TrackStatus,
@@ -34,6 +40,8 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
   const [busy, setBusy] = useState(false);
   const [scac, setScac] = useState(() => scacFor(file.shippingLine) ?? '');
   const [num, setNum] = useState(''); // manual number for edit-&-retry
+  const [pasteOpen, setPasteOpen] = useState(false); // free paste-update modal
+  const [t49, setT49] = useState<boolean | null>(null); // live API configured?
   const polls = useRef(0);
 
   const load = useCallback(async () => {
@@ -51,6 +59,10 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
     if (serverMode) void load();
     else setLoading(false);
   }, [serverMode, load]);
+
+  useEffect(() => {
+    trackingConfigured().then(setT49).catch(() => setT49(false));
+  }, []);
 
   // Terminal49 fetches from the carrier asynchronously — while a live row has no
   // snapshot yet, quietly re-poll a few times so data appears without the user
@@ -119,7 +131,8 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
         )}
       </div>
 
-      {loading ? (
+      {t49 !== false &&
+        (loading ? (
         <div className="grid place-items-center py-4 text-muted">
           <Loader2 size={16} className="animate-spin" />
         </div>
@@ -213,7 +226,40 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
             <p className="mt-2 text-[11px] text-amber">No container or BL / AWB on this file yet — add it (Edit) for best results.</p>
           )}
         </div>
-      )}
+      ))}
+
+      {/* Free tracking — no API quota: open the carrier page, paste it back in. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+        {(container || file.blAwb) && (
+          <a
+            href={carrierTrackingUrl(scac || scacFor(file.shippingLine), container || file.blAwb)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold text-medium hover:border-navy hover:text-navy"
+          >
+            <ExternalLink size={12} /> Open tracking
+          </a>
+        )}
+        <button
+          onClick={() => setPasteOpen(true)}
+          className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold text-medium hover:border-navy hover:text-navy"
+        >
+          <ClipboardList size={12} /> Paste update
+        </button>
+        {file.lastTrackingEvent ? (
+          <span className="min-w-0 truncate text-[11px] text-muted">
+            {file.lastTrackingEvent}
+            {file.lastTrackingAt ? ` · ${file.lastTrackingAt}` : ''}
+          </span>
+        ) : (
+          t49 === false && (
+            <span className="text-[11px] text-muted">
+              Free tracking: open the carrier page, then send it back with the Chrome extension or Paste update.
+            </span>
+          )
+        )}
+      </div>
+      {pasteOpen && <PasteTrackingModal file={file} onClose={() => setPasteOpen(false)} />}
     </div>
   );
 }
@@ -303,4 +349,98 @@ function fmt(iso?: string): string {
   if (!m) return iso;
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${Number(m[3])} ${months[Number(m[2]) - 1]} ${m[1]}`;
+}
+
+
+// Free tracking capture: paste the carrier tracking page's text; DeepSeek pulls
+// ETA / arrival / vessel / latest event; Apply writes them onto the file — ETA and
+// arrival feed the rail + reminders, so free tracking still drives the dashboard.
+function PasteTrackingModal({ file, onClose }: { file: ImportFile; onClose: () => void }) {
+  const { updateFile } = useStore();
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [fields, setFields] = useState<UpdateFields | null>(null);
+
+  const read = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      setFields(await aiUpdate(text));
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rows: { label: string; value?: string }[] = fields
+    ? [
+        { label: 'ETA', value: fields.eta },
+        { label: 'Arrived on', value: fields.arrivedOn },
+        { label: 'Vessel', value: fields.vessel },
+        { label: 'Latest event', value: fields.latestEvent },
+      ].filter((r) => r.value)
+    : [];
+
+  const apply = () => {
+    if (!fields) return;
+    const patch: Partial<ImportFile> = { lastTrackingAt: TODAY };
+    if (fields.eta) patch.eta = fields.eta;
+    if (fields.arrivedOn) patch.arrivedOn = fields.arrivedOn;
+    if (fields.vessel) patch.vessel = fields.vessel;
+    if (fields.latestEvent) patch.lastTrackingEvent = fields.latestEvent;
+    updateFile(file.id, patch);
+    onClose();
+  };
+
+  return (
+    <Modal
+      title="Paste tracking update"
+      subtitle="Copy the carrier tracking page (Cmd/Ctrl+A then C) and paste it here"
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          {fields ? (
+            <Button onClick={apply} disabled={rows.length === 0}>
+              Apply to shipment
+            </Button>
+          ) : (
+            <Button onClick={() => void read()} disabled={busy || text.trim().length < 20}>
+              {busy ? 'Reading…' : 'Read with AI'}
+            </Button>
+          )}
+        </div>
+      }
+    >
+      {fields ? (
+        rows.length ? (
+          <div className="flex flex-col gap-1.5">
+            {rows.map((r) => (
+              <div key={r.label} className="flex items-center gap-2 rounded-card border border-border p-2 text-xs">
+                <span className="font-semibold text-ink">{r.label}</span>
+                <span className="ml-auto truncate font-semibold text-navy">{r.value}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted">Nothing recognisable found — paste more of the page and try again.</p>
+        )
+      ) : (
+        <>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={8}
+            placeholder="Paste the tracking page text here…"
+            className="w-full rounded-card border border-border p-3 text-xs outline-none focus:border-navy"
+          />
+          {err && <p className="mt-1 text-xs font-semibold text-red">{err}</p>}
+        </>
+      )}
+    </Modal>
+  );
 }

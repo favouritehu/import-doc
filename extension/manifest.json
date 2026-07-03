@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Import Desk Tracker",
+  "version": "1.0.0",
+  "description": "One click: send any container-tracking page to Import Desk — AI reads it and updates the matching shipment.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Send this tracking page to Import Desk"
+  },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://*/*", "http://*/*"]
+}

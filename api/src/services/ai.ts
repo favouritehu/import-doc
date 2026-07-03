@@ -359,9 +359,17 @@ Write the message.`;
 
 // ── Paste-to-update: extract changed shipment fields from a message ────
 
+function coerceDate(v: unknown): string {
+  const x = typeof v === 'string' ? v.trim() : '';
+  return /^\d{4}-\d{2}-\d{2}/.test(x) ? x.slice(0, 10) : '';
+}
+
 export interface UpdateFields {
   etd?: string;
   eta?: string;
+  arrivedOn?: string;
+  vessel?: string;
+  latestEvent?: string;
   blAwb?: string;
   shippingLine?: string;
   forwarder?: string;
@@ -370,8 +378,8 @@ export interface UpdateFields {
 }
 
 const UPDATE_SYSTEM = `You read a supplier/forwarder WhatsApp or email message about a shipment and extract ONLY the shipment fields it states. Output JSON ONLY in this shape (omit a key or use "" if the message doesn't mention it):
-{"etd":"YYYY-MM-DD","eta":"YYYY-MM-DD","blAwb":"","shippingLine":"","forwarder":"","portLoading":"","portArrival":""}
-etd = departure/sailing/loaded date, eta = arrival date — output dates as YYYY-MM-DD. blAwb = Bill of Lading / AWB number. Do not invent values; only extract what is explicitly stated.`;
+{"etd":"YYYY-MM-DD","eta":"YYYY-MM-DD","arrivedOn":"YYYY-MM-DD","vessel":"","latestEvent":"","blAwb":"","shippingLine":"","forwarder":"","portLoading":"","portArrival":""}
+etd = departure/sailing/loaded date, eta = arrival date, arrivedOn = actual arrival/discharge date (only if it ALREADY happened) — output dates as YYYY-MM-DD. vessel = current vessel name. latestEvent = the most recent tracking event as one short line, e.g. "Discharged at Nhava Sheva". blAwb = Bill of Lading / AWB number. The text may be a carrier tracking web page — read the newest milestone. Do not invent values; only extract what is explicitly stated.`;
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 function coerceIsoDate(v: unknown): string {
@@ -405,6 +413,12 @@ export async function extractUpdate(text: string): Promise<UpdateFields> {
   if (forwarder) out.forwarder = forwarder;
   if (portLoading) out.portLoading = portLoading;
   if (portArrival) out.portArrival = portArrival;
+  const arrivedOn = coerceDate(r.arrivedOn ?? r.arrived ?? r.dischargedOn);
+  const vessel = str(r.vessel ?? r.vesselName);
+  const latestEvent = str(r.latestEvent ?? r.lastEvent ?? r.statusText);
+  if (arrivedOn) out.arrivedOn = arrivedOn;
+  if (vessel) out.vessel = vessel;
+  if (latestEvent) out.latestEvent = latestEvent.slice(0, 120);
   return out;
 }
 

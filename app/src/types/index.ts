@@ -137,6 +137,9 @@ export interface ImportFile {
   eta: string; // arrival date; ISO going forward, legacy values parsed leniently
   etaDays: number;
   arrivedOn: string | null;
+  vessel?: string; // from tracking (free paste-update or live)
+  lastTrackingEvent?: string; // newest milestone, one line
+  lastTrackingAt?: string; // when the user last pasted an update
   shippingLine: string;
   forwarder: string;
   boeNumber: string | null;
