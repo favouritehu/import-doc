@@ -16,3 +16,7 @@ uploads/
 # logs / os
 *.log
 .DS_Store
+
+# Chrome extension pack artifacts (never commit keys)
+*.pem
+*.crx

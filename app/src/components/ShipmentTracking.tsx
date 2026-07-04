@@ -1,7 +1,8 @@
-// Shipment tracking — free-carrier flow only. "Open tracking" jumps to the
-// carrier's own free page for this container/BL; the data comes back via the
-// Chrome extension (auto-capture) or "Paste update" (AI reads the pasted page).
-// ETA + arrival feed deriveStatus, the arrival rail and reminders.
+// Shipment tracking — free-carrier flow, journey view. Shows WHERE the shipment
+// is between origin and destination (position = elapsed share of the ETD→ETA
+// window, colored like the arrival rail), the vessel, and the latest carrier
+// milestone. Data arrives via the Chrome extension or "Paste update" (AI reads
+// the carrier page); ETA/ETD/arrival feed deriveStatus, the rail and reminders.
 
 import { useState } from 'react';
 import { ClipboardList, Copy, ExternalLink, Ship } from 'lucide-react';
@@ -12,7 +13,7 @@ import { carrierTrackingUrl } from '../lib/trackingLinks';
 import { aiUpdate, type UpdateFields } from '../lib/ai';
 import { Modal } from './Overlay';
 import { Button } from './Button';
-import { fmtDate } from '../lib/dates';
+import { daysBetween, fmtDate, parseDate, todayIso } from '../lib/dates';
 
 export function ShipmentTracking({ file }: { file: ImportFile }) {
   const { showToast } = useStore();
@@ -32,20 +33,81 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
     }
   };
 
+  // ── Journey math: where is the ship between ETD and ETA? ──
+  const today = parseDate(todayIso());
+  const dEtd = parseDate(file.etd);
+  const dEta = parseDate(file.eta);
+  const arrived = !!file.arrivedOn;
+  const daysLeft = dEta ? daysBetween(todayIso(), file.eta) : null;
+
+  let pct = 0;
+  if (arrived) pct = 100;
+  else if (today && dEtd && dEta && dEta.getTime() > dEtd.getTime()) {
+    pct = Math.round(((today.getTime() - dEtd.getTime()) / (dEta.getTime() - dEtd.getTime())) * 100);
+    pct = Math.max(3, Math.min(pct, 97)); // keep the dot visible inside the bar
+  } else if (daysLeft !== null) {
+    pct = daysLeft <= 0 ? 97 : 50;
+  }
+
+  const color = arrived ? '#16A34A' : daysLeft !== null && daysLeft <= 4 ? '#DC3A45' : '#16A34A';
+  const plural = (n: number) => (Math.abs(n) === 1 ? 'day' : 'days');
+  const statusLabel = arrived
+    ? `Arrived ${fmtDate(file.arrivedOn!) || file.arrivedOn}`
+    : daysLeft === null
+      ? 'No ETA yet'
+      : daysLeft < 0
+        ? `Overdue ${Math.abs(daysLeft)} ${plural(daysLeft)}`
+        : daysLeft === 0
+          ? 'Arrives today'
+          : `Arrives in ${daysLeft} ${plural(daysLeft)}`;
+
+  const hasJourney = !!(dEtd || dEta);
+
   return (
     <div className="rounded-card border border-border bg-white p-4 shadow-card">
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-3 flex items-center gap-2">
         <Ship size={16} className="text-navy" />
         <h3 className="font-display text-sm font-bold text-ink">Tracking</h3>
-        {num && <span className="ml-auto font-mono text-[11px] text-muted">{num}</span>}
+        {file.vessel && <span className="truncate text-xs font-semibold text-medium">· {file.vessel}</span>}
+        {num && <span className="ml-auto shrink-0 font-mono text-[11px] text-muted">{num}</span>}
       </div>
 
-      {(file.vessel || file.lastTrackingEvent) && (
-        <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-4">
-          {file.vessel && <Fact label="Vessel" value={file.vessel} />}
-          <Fact label="ETA" value={fmtDate(file.eta) || file.eta} />
-          {file.arrivedOn && <Fact label="Arrived" value={fmtDate(file.arrivedOn) || file.arrivedOn} />}
-          {file.lastTrackingEvent && <Fact label="Latest" value={file.lastTrackingEvent} />}
+      {/* Origin ──●── Destination journey bar */}
+      {hasJourney && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between gap-3 text-[11px] font-bold text-ink">
+            <span className="truncate">{file.portLoading || 'Origin'}</span>
+            <span className="truncate text-right">{file.portArrival || 'Destination'}</span>
+          </div>
+          <div className="relative my-2 h-1.5 rounded-full bg-page">
+            <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${pct}%`, background: color }} />
+            <div
+              className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 border-white shadow"
+              style={{ left: `calc(${pct}% - 7px)`, background: color }}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3 text-[10px]">
+            <span className="text-muted">
+              ETD {file.etd ? fmtDate(file.etd) || file.etd : '—'}
+            </span>
+            <span className="font-bold" style={{ color }}>
+              {statusLabel}
+              {!arrived && file.eta ? ` · ETA ${fmtDate(file.eta) || file.eta}` : ''}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Latest carrier milestone — full line, never truncated into oblivion */}
+      {file.lastTrackingEvent && (
+        <div className="mb-3 flex items-start gap-2 rounded-card bg-page px-3 py-2">
+          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} />
+          <p className="min-w-0 text-xs font-semibold text-ink">
+            {file.lastTrackingEvent}
+            {file.lastTrackingAt && (
+              <span className="block text-[10px] font-normal text-faint">updated {file.lastTrackingAt}</span>
+            )}
+          </p>
         </div>
       )}
 
@@ -83,25 +145,13 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
           </span>
         )}
       </div>
-      {file.lastTrackingAt && (
-        <p className="mt-2 text-[10px] text-faint">Last update {file.lastTrackingAt}</p>
-      )}
       {pasteOpen && <PasteTrackingModal file={file} onClose={() => setPasteOpen(false)} />}
     </div>
   );
 }
 
-function Fact({ label, value }: { label: string; value?: string }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-[10px] text-faint">{label}</div>
-      <div className="truncate font-semibold text-ink">{value || '—'}</div>
-    </div>
-  );
-}
-
 // Free tracking capture: paste the carrier tracking page's text; DeepSeek pulls
-// ETA / arrival / vessel / latest event; Apply writes them onto the file.
+// ETD / ETA / arrival / vessel / latest event; Apply writes them onto the file.
 function PasteTrackingModal({ file, onClose }: { file: ImportFile; onClose: () => void }) {
   const { updateFile } = useStore();
   const [text, setText] = useState('');
