@@ -23,6 +23,15 @@ export function groupAmount(n: number): string {
 
 export const inr = (n: number): string => '₹' + groupAmount(n);
 
+/** Compact Indian display: ₹1.54 L / ₹2.30 Cr — importers think in lakhs. Exact
+ *  value goes in a title/tooltip where this is used. */
+export const inrCompact = (n: number): string => {
+  const abs = Math.abs(n);
+  if (abs >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
+  if (abs >= 1e5) return `₹${(n / 1e5).toFixed(2)} L`;
+  return inr(n);
+};
+
 export const invoiceInr = (inv: Invoice): number => Math.round(inv.usd * inv.rate);
 
 export const fileValueInr = (f: ImportFile): number =>

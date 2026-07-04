@@ -161,11 +161,11 @@ interface Store {
   /** true when files are backed by the shared server (Postgres); false = per-browser IndexedDB. */
   serverMode: boolean;
   files: ImportFile[];
-  toast: string | null;
+  toast: { m: string; kind: 'info' | 'error' } | null;
   setRole: (r: Role) => void;
   signIn: (u: User) => void;
   signOut: () => void;
-  showToast: (m: string) => void;
+  showToast: (m: string, kind?: 'info' | 'error') => void;
   getFile: (id: number) => ImportFile | undefined;
   getFileByNumber: (n: string) => ImportFile | undefined;
   createFromTemplate: (input: CreateFromTemplateInput, tpl: TemplateLike) => Promise<number>;
@@ -231,7 +231,7 @@ export function StoreProvider({
   // Start empty — never flash demo files before IndexedDB hydrates. The real
   // files load in the hydrate effect below; demo is opt-in via Settings → reset.
   const [files, setFiles] = useState<ImportFile[]>(initialFiles ?? []);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(!!initialFiles);
   const [serverMode, setServerMode] = useState(false);
   // Persist guard: stays false until hydration SUCCEEDS (from server OR IndexedDB).
   // The persist effect refuses to write while false, so a failed/slow load can
@@ -251,7 +251,7 @@ export function StoreProvider({
   const syncAgain = useRef(false);
   const retryTimer = useRef<number | null>(null);
   const [users, setUsers] = useState<User[]>(() => loadUsers());
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ m: string; kind: 'info' | 'error' } | null>(null);
 
   const signIn = useCallback((u: User) => {
     setUser(u);
@@ -281,9 +281,12 @@ export function StoreProvider({
     [signIn, user],
   );
 
-  const showToast = useCallback((m: string) => {
-    setToast(m);
-    window.setTimeout(() => setToast((cur) => (cur === m ? null : cur)), 1900);
+  const showToast = useCallback((m: string, kind?: 'info' | 'error') => {
+    // Errors read differently and linger longer. Heuristic keeps existing call
+    // sites working without threading a kind through every one.
+    const k = kind ?? (/could not|failed|error|expired|wrong|unable|not available/i.test(m) ? 'error' : 'info');
+    setToast({ m, kind: k });
+    window.setTimeout(() => setToast((cur) => (cur?.m === m ? null : cur)), k === 'error' ? 4000 : 1900);
   }, []);
 
   // Hydrate on startup. Prefer the shared server; fall back to IndexedDB when the

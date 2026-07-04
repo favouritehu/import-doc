@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  /* Keyboard-visible focus everywhere (custom pills/buttons lacked any ring).
+     Mouse clicks stay clean via :focus-visible. */
+  :focus-visible {
+    outline: 2px solid rgba(27, 39, 64, 0.45);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+}

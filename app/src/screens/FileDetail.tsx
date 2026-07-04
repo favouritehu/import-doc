@@ -21,7 +21,7 @@ import { MagicLinkPanel } from '../components/MagicLinkPanel';
 import { Modal } from '../components/Overlay';
 import { cx } from '../lib/cx';
 import { derivePriority, deriveStatus, relevantPayments, requiredMissingDocs, responsibleOf } from '../lib/derive';
-import { APPROX_INR_RATE, fileValueInr, inr, invoiceInr, supplierLabel } from '../lib/format';
+import { APPROX_INR_RATE, fileValueInr, inr, inrCompact, invoiceInr, supplierLabel } from '../lib/format';
 import { COMMON_FILE_DOCS, CUSTOMS_DOCS, PAYMENT_LABELS, docLabel } from '../lib/docs';
 import { aiClassify, aiChase, aiUpdate, sendTestReminder, AiError, type ClassifyResult, type UpdateFields } from '../lib/ai';
 import { fmtDate, isoOf, parseDate, todayIso } from '../lib/dates';
@@ -145,9 +145,11 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
           items.push({ name: `${prefix}${d.fileName ? `${label} - ${d.fileName}` : label}`, url: d.fileUrl });
         }
       };
-      file.invoices.forEach((inv, i) => {
-        push(inv.ci, `INV${i + 1} `);
-        push(inv.pl, `INV${i + 1} `);
+      file.invoices.forEach((inv) => {
+        // Prefix invoice docs with the PARTY name so the CHA sees whose they are.
+        const party = inv.supplier ? `${inv.supplier} - ` : '';
+        push(inv.ci, party);
+        push(inv.pl, party);
       });
       file.docs.forEach((d) => push(d, ''));
       if (!items.length) {
@@ -172,7 +174,8 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
       const blob = buildZip(entries);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `${file.fileNumber}-documents.zip`;
+      // ZIP named by the party so the CHA knows the shipment at a glance.
+      a.download = `${supplierLabel(file).replace(/[\\/:*?"<>|]/g, '-').slice(0, 60)} ${file.fileNumber}.zip`;
       a.click();
       URL.revokeObjectURL(a.href);
       store.showToast(`ZIP ready — ${entries.length} document${entries.length === 1 ? '' : 's'}`);
@@ -220,7 +223,9 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
               {canFin ? (
                 <>
                   <div className="text-[11px] text-faint">Invoice value</div>
-                  <div className="font-display text-xl font-extrabold text-ink">{inr(fileValueInr(file))}</div>
+                  <div className="font-display text-xl font-extrabold text-ink" title={inr(fileValueInr(file))}>
+                    {inrCompact(fileValueInr(file))}
+                  </div>
                 </>
               ) : (
                 <div className="inline-flex items-center gap-1 rounded-full bg-page px-2.5 py-1 text-[11px] font-semibold text-muted">
@@ -489,7 +494,7 @@ function SummaryTab({
     ['BL / AWB', file.blAwb || '—'],
     ['Port of loading', file.portLoading || '—'],
     ['Port of arrival', file.portArrival],
-    ['ETA', file.eta],
+    ['ETA', fmtDate(file.eta) || file.eta],
     ['Shipping line', file.shippingLine || '—'],
     ['CHA', file.cha],
   ];

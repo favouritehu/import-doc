@@ -4,6 +4,7 @@ import { useStore } from '../store/store';
 import { MobileBottomNav } from './MobileBottomNav';
 import { Sidebar } from './Sidebar';
 import { Toast } from './Toast';
+import { CommandPalette } from './CommandPalette';
 
 export function AppShell() {
   const isMobile = useIsMobile();
@@ -23,6 +24,7 @@ export function AppShell() {
       </div>
       {isMobile && <MobileBottomNav />}
       <Toast />
+      <CommandPalette />
     </div>
   );
 }
