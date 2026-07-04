@@ -7,11 +7,13 @@ import type { ImportFile } from '../types';
 import { deriveStatus } from './derive';
 import { daysBetween } from './dates';
 import { supplierLabel } from './format';
-import { statusMeta } from './docs';
+import { statusMeta, CHA_STEPS } from './docs';
 
 export type RailStatus = 'red' | 'amber' | 'green' | 'none';
 
 export interface RailItem {
+  /** Newest activity: latest done CHA step, else the captured carrier milestone. */
+  event?: string;
   fileId: number;
   fileNumber: string;
   party: string;
@@ -27,7 +29,8 @@ const RANK: Record<RailStatus, number> = { red: 0, amber: 1, green: 2, none: 3 }
 const plural = (n: number) => (n === 1 ? '' : 's');
 
 export function railItem(f: ImportFile, today: string): RailItem {
-  const base = { fileId: f.id, fileNumber: f.fileNumber, party: supplierLabel(f) };
+  const base = { fileId: f.id, fileNumber: f.fileNumber,
+    event: latestActivity(f), party: supplierLabel(f) };
   const arrived = !!f.arrivedOn || deriveStatus(f) === 'goods_received';
   const d = daysBetween(today, f.eta); // whole days to ETA; null if no/garbled date
 
@@ -61,4 +64,16 @@ export function railItems(files: ImportFile[], today: string): RailItem[] {
   return files
     .map((f) => railItem(f, today))
     .sort((a, b) => RANK[a.status] - RANK[b.status] || b.fileId - a.fileId);
+}
+
+/** Newest thing that happened to the shipment: the latest DONE customs step
+ *  (BOE filed, duty paid, OOC…) once CHA work has started, else the latest
+ *  captured carrier milestone (vessel departure/arrival). */
+function latestActivity(f: ImportFile): string | undefined {
+  let cha: string | undefined;
+  for (const st of CHA_STEPS) {
+    const ov = f.chaOv?.[st.key];
+    if (ov && ov[0] === 'done') cha = ov[1] ? `${st.label} · ${ov[1]}` : st.label;
+  }
+  return cha ?? f.lastTrackingEvent;
 }

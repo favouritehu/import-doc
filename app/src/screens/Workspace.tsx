@@ -112,6 +112,9 @@ function PartiesRail({
                       {it.line}
                     </span>
                   </span>
+                  {it.event && (
+                    <span className="mt-1 block truncate text-[11px] text-faint">● {it.event}</span>
+                  )}
                   <span className="mt-1.5 block">
                     <span
                       className="inline-block rounded-md px-2 py-0.5 text-[10.5px] font-bold"

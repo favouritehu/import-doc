@@ -134,6 +134,26 @@ export async function fetchBlobUrl(ref: string): Promise<string> {
   return URL.createObjectURL(await res.blob());
 }
 
+/** Raw bytes of a stored document — srv: (auth fetch), data: (decode) or http. */
+export async function docBytes(fileUrl: string): Promise<Uint8Array | null> {
+  try {
+    if (fileUrl.startsWith('srv:')) {
+      const res = await req(`/files/blob/${fileUrl.slice(4)}`);
+      return new Uint8Array(await res.arrayBuffer());
+    }
+    if (fileUrl.startsWith('data:')) {
+      const bin = atob(fileUrl.slice(fileUrl.indexOf(',') + 1));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+      return bytes;
+    }
+    const res = await fetch(fileUrl);
+    return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 // ── Shared team profiles (pick your name on any device, no re-creating) ────
 export async function listUsersRemote(): Promise<User[]> {
   const res = await req('/users');

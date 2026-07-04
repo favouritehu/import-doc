@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Bell, Check, FileUp, Link2, Loader2, Lock, Pencil, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
+import { Bell, Check, FileUp, FolderDown, Link2, Loader2, Lock, Pencil, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
 import type { Currency, Doc, ImportFile, Incoterm, Invoice, Mode, PaymentType, Priority, User } from '../types';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
@@ -28,6 +28,8 @@ import { fmtDate, isoOf, parseDate, todayIso } from '../lib/dates';
 import { shipmentReminders } from '../lib/reminders';
 import { RolePolicy } from '../lib/rolePolicy';
 import { useStore, type AddDocInput } from '../store/store';
+import { docBytes } from '../lib/api';
+import { buildZip, type ZipEntry } from '../lib/zip';
 
 /** Normalize any date string (legacy "08 Jun 2026", dd/mm/yyyy, ISO) to ISO for
  *  a <input type="date">; '' if unparseable. */
@@ -78,6 +80,7 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
   const [pasteOpen, setPasteOpen] = useState(false);
   const [chaseOpen, setChaseOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [zipping, setZipping] = useState(false);
 
   const canFin = RolePolicy.canSeeFinancials(role);
   const canHsn = RolePolicy.canSeeHsn(role);
@@ -129,6 +132,54 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
       : []),
   ];
   const reqMissingCount = requiredMissingDocs(file).length;
+
+  // One ZIP with every uploaded document — for sending the CHA the whole pack.
+  const downloadAllZip = async () => {
+    if (zipping) return;
+    setZipping(true);
+    try {
+      const items: { name: string; url: string }[] = [];
+      const push = (d: Doc | undefined, prefix: string) => {
+        if (d?.fileUrl) {
+          const label = d.label ?? docLabel(d.type);
+          items.push({ name: `${prefix}${d.fileName ? `${label} - ${d.fileName}` : label}`, url: d.fileUrl });
+        }
+      };
+      file.invoices.forEach((inv, i) => {
+        push(inv.ci, `INV${i + 1} `);
+        push(inv.pl, `INV${i + 1} `);
+      });
+      file.docs.forEach((d) => push(d, ''));
+      if (!items.length) {
+        store.showToast('No uploaded documents yet');
+        return;
+      }
+      const entries: ZipEntry[] = [];
+      const seen = new Set<string>();
+      for (const it of items) {
+        const base = it.name.replace(/[\\/:*?"<>|]/g, '-').slice(0, 90);
+        let name = base;
+        let k = 1;
+        while (seen.has(name)) name = `${base} (${k++})`;
+        seen.add(name);
+        const data = await docBytes(it.url);
+        if (data) entries.push({ name, data });
+      }
+      if (!entries.length) {
+        store.showToast('Could not read the documents');
+        return;
+      }
+      const blob = buildZip(entries);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${file.fileNumber}-documents.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      store.showToast(`ZIP ready — ${entries.length} document${entries.length === 1 ? '' : 's'}`);
+    } finally {
+      setZipping(false);
+    }
+  };
 
   // Soonest ETD/ETA reminder — used to fire a test email through n8n (admin).
   const nextReminder = shipmentReminders(file, todayIso())[0];
@@ -256,6 +307,11 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
                 {reqMissingCount > 0 && (
                   <Button variant="ghost" onClick={() => setChaseOpen(true)}>
                     <Sparkles size={15} /> Draft chase
+                  </Button>
+                )}
+                {docGroups.length > 0 && (
+                  <Button variant="ghost" onClick={() => void downloadAllZip()} disabled={zipping}>
+                    {zipping ? <Loader2 size={15} className="animate-spin" /> : <FolderDown size={15} />} Download ZIP
                   </Button>
                 )}
                 <Button variant="ghost" onClick={() => setBulkOpen(true)}>
