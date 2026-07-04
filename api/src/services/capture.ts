@@ -58,6 +58,10 @@ export async function applyCapture(text: string): Promise<CaptureResult> {
   // Patch only tracking-ish fields; the file stays the single source of truth.
   const applied: Record<string, string> = {};
   const patch = { ...match } as Record<string, unknown>;
+  if (upd.etd) {
+    patch.etd = upd.etd;
+    applied.etd = upd.etd;
+  }
   if (upd.eta) {
     patch.eta = upd.eta;
     applied.eta = upd.eta;

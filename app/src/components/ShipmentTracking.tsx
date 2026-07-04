@@ -4,7 +4,7 @@
 // ETA + arrival feed deriveStatus, the arrival rail and reminders.
 
 import { useState } from 'react';
-import { ClipboardList, ExternalLink, Ship } from 'lucide-react';
+import { ClipboardList, Copy, ExternalLink, Ship } from 'lucide-react';
 import type { ImportFile } from '../types';
 import { useStore, TODAY } from '../store/store';
 import { scacFor } from '../lib/scac';
@@ -15,9 +15,22 @@ import { Button } from './Button';
 import { fmtDate } from '../lib/dates';
 
 export function ShipmentTracking({ file }: { file: ImportFile }) {
+  const { showToast } = useStore();
   const [pasteOpen, setPasteOpen] = useState(false);
   const container = file.containerNo?.trim();
   const num = container || file.blAwb;
+
+  // Many carrier pages ignore URL params — the user pastes the CONTAINER number
+  // into the page's own search box, so hand exactly that to the clipboard.
+  const copyNum = async () => {
+    if (!container) return;
+    try {
+      await navigator.clipboard.writeText(container);
+      showToast(`Copied ${container}`);
+    } catch {
+      showToast('Could not copy — long-press the number instead');
+    }
+  };
 
   return (
     <div className="rounded-card border border-border bg-white p-4 shadow-card">
@@ -46,6 +59,14 @@ export function ShipmentTracking({ file }: { file: ImportFile }) {
           >
             <ExternalLink size={12} /> Open tracking
           </a>
+        )}
+        {container && (
+          <button
+            onClick={() => void copyNum()}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-3.5 py-1.5 text-[11px] font-semibold text-medium hover:border-navy hover:text-navy"
+          >
+            <Copy size={12} /> Copy no
+          </button>
         )}
         <button
           onClick={() => setPasteOpen(true)}
@@ -102,6 +123,7 @@ function PasteTrackingModal({ file, onClose }: { file: ImportFile; onClose: () =
 
   const rows: { label: string; value?: string }[] = fields
     ? [
+        { label: 'ETD (departure)', value: fields.etd },
         { label: 'ETA', value: fields.eta },
         { label: 'Arrived on', value: fields.arrivedOn },
         { label: 'Vessel', value: fields.vessel },
@@ -112,6 +134,7 @@ function PasteTrackingModal({ file, onClose }: { file: ImportFile; onClose: () =
   const apply = () => {
     if (!fields) return;
     const patch: Partial<ImportFile> = { lastTrackingAt: TODAY };
+    if (fields.etd) patch.etd = fields.etd;
     if (fields.eta) patch.eta = fields.eta;
     if (fields.arrivedOn) patch.arrivedOn = fields.arrivedOn;
     if (fields.vessel) patch.vessel = fields.vessel;
