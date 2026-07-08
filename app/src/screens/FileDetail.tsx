@@ -645,7 +645,13 @@ function AddPaymentModal({
         <div className="grid grid-cols-3 gap-2">
           <label className="col-span-2 block">
             <span className="mb-1 block text-xs font-semibold text-muted">Amount</span>
-            <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="numeric" className={inputCls} />
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+              inputMode="decimal"
+              placeholder="0"
+              className={inputCls}
+            />
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-semibold text-muted">Currency</span>
