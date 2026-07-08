@@ -608,7 +608,7 @@ function AddPaymentModal({
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<Currency>('USD');
   const [due, setDue] = useState('');
-  const valid = Number(amount) > 0 && due.trim();
+  const valid = Number(amount) > 0;
 
   return (
     <Modal
@@ -657,7 +657,7 @@ function AddPaymentModal({
           </label>
         </div>
         <label className="block">
-          <span className="mb-1 block text-xs font-semibold text-muted">Due date</span>
+          <span className="mb-1 block text-xs font-semibold text-muted">Due date (optional)</span>
           <input value={due} onChange={(e) => setDue(e.target.value)} className={inputCls} placeholder="e.g. 30 Jun 2026" />
         </label>
       </div>
