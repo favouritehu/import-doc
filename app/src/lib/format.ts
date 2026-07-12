@@ -2,7 +2,7 @@
 // the ONLY sanctioned way to read a file's worth or vendor — ImportFile has no
 // top-level supplier/usd mirror, so these aggregate across invoices[].
 
-import type { Currency, ExportFile, ImportFile, Invoice, Payment } from '../types';
+import type { Currency, ExportFile, ExportPayment, ImportFile, Invoice, Payment } from '../types';
 
 export const APPROX_INR_RATE: Record<Currency, number> = {
   USD: 83.2,
@@ -48,14 +48,16 @@ export function supplierLabel(f: ImportFile): string {
   return `${s[0]} +${s.length - 1}`;
 }
 
-export function payInr(p: Payment): number {
+// Payment/ExportPayment share the same money shape (.inr/.usd/.rate/.currency) —
+// widened additively so both domains use one helper without duplicating logic.
+export function payInr(p: Payment | ExportPayment): number {
   if (p.inr != null) return p.inr;
   if (p.usd != null && p.rate != null) return Math.round(p.usd * p.rate);
   return 0;
 }
 
 /** "USD 12,000 @ ₹83.2" — the FX line accountants read. */
-export function fxLine(p: Payment): string {
+export function fxLine(p: Payment | ExportPayment): string {
   if (p.usd != null && p.rate != null) {
     return `${p.currency ?? 'USD'} ${groupAmount(p.usd)} @ ₹${p.rate}`;
   }

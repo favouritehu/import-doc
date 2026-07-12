@@ -18,6 +18,7 @@ export const NAV: NavDef[] = [
   { key: 'home', label: 'Dashboard', path: '/', roles: ALL, badge: null },
   { key: 'calendar', label: 'Calendar', path: '/calendar', roles: ALL, badge: null },
   { key: 'files', label: 'Files', path: '/files', roles: ALL, badge: null },
+  { key: 'exports', label: 'Exports', path: '/exports', roles: ALL, badge: null },
   { key: 'pending-docs', label: 'Pending Docs', path: '/pending-docs', roles: ['admin', 'import_manager'], badge: 'pending-docs' },
   { key: 'pending-payments', label: 'Pending Payments', path: '/pending-payments', roles: ['admin', 'accountant'], badge: 'pending-payments' },
   { key: 'cha', label: 'CHA Desk', path: '/cha-desk', roles: ['admin', 'import_manager'], badge: null },
