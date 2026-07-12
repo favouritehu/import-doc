@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { StoreProvider } from './store/store';
+import { ExportStoreProvider } from './store/exportStore';
 import { AuthGate } from './components/AuthGate';
 import './styles/index.css';
 import './styles/tokens.css';
@@ -12,7 +13,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <AuthGate>
         <StoreProvider>
-          <App />
+          <ExportStoreProvider>
+            <App />
+          </ExportStoreProvider>
         </StoreProvider>
       </AuthGate>
     </BrowserRouter>

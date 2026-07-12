@@ -225,3 +225,88 @@ export interface NavItem {
   path: string;
   badge?: number;
 }
+
+// ── Export Desk (Phase 1) — separate parallel domain, own types ────────
+// Mirrors the import shapes above; reuses shared enums (DocStatus, PayStatus,
+// Priority, Mode, Incoterm, Currency, Doc, Note) as-is. See docs/superpowers/
+// specs/2026-07-11-export-desk-phase1-design.md §"Data model".
+
+export type ExportFileStatus =
+  | 'draft'
+  | 'documents_pending'
+  | 'cha_work' // shipping bill being filed
+  | 'customs_cleared' // shipping bill approved / LEO granted
+  | 'shipped' // export BL/AWB obtained
+  | 'payment_realized' // buyer remittance realized (FIRC/BRC)
+  | 'closed';
+
+export type PayDirection = 'receivable' | 'payable';
+
+export type ExportPaymentType =
+  | 'advance_received' // receivable — buyer advance
+  | 'balance_received' // receivable — buyer balance
+  | 'freight' // payable — to forwarder (CIF/CFR)
+  | 'insurance' // payable
+  | 'cha_charges' // payable
+  | 'bank_charges' // payable
+  | 'other'; // payable
+
+export interface ExportPayment {
+  type: ExportPaymentType;
+  direction: PayDirection; // keeps receivables & payables from summing together
+  currency?: Currency;
+  usd?: number;
+  rate?: number;
+  inr?: number;
+  due: string;
+  paid: string | null;
+  status: PayStatus;
+  ref: string;
+}
+
+// One export invoice line issued by us to the overseas buyer.
+export interface ExportInvoice {
+  id: string;
+  buyer: string; // overseas buyer (mirror of import Invoice.supplier)
+  invoiceNumber: string;
+  invoiceDate: string;
+  product: string;
+  qty: string;
+  weight?: string;
+  hsn?: string;
+  usd: number;
+  currency: Currency;
+  rate: number;
+  ci: Doc; // export_commercial_invoice for THIS line
+  pl: Doc; // export_packing_list for THIS line
+}
+
+export interface ExportFile {
+  id: number;
+  fileNumber: string;
+  destination: string; // buyer country (mirror of import `country` origin)
+  mode: Mode;
+  incoterm: Incoterm;
+  invoices: ExportInvoice[]; // >= 1
+  blAwb: string;
+  portLoading: string; // Indian port of loading
+  portDischarge: string; // overseas port
+  etd?: string;
+  eta: string;
+  etaDays: number;
+  shippedOn: string | null; // actual export/sailing date
+  shippingLine: string;
+  forwarder: string;
+  shippingBillNo: string | null;
+  shippingBillDate: string | null;
+  manager: string; // export manager
+  accountant: string;
+  cha: string;
+  status: ExportFileStatus; // seeded fallback; deriveExportStatus is authoritative
+  statusManual?: boolean; // owner override holds `status` (e.g. terminal 'closed')
+  priority: Priority;
+  discrepancy?: string;
+  docs: Doc[]; // file-level docs only — NEVER export CI / PL
+  payments: ExportPayment[];
+  notes: Note[];
+}

@@ -16,6 +16,8 @@ import { Reports } from './screens/Reports';
 import { Settings } from './screens/Settings';
 import { Alerts } from './screens/Alerts';
 import { MagicLinkPage } from './screens/MagicLinkPage';
+import { ExportFilesList } from './screens/ExportFilesList';
+import { ExportFileDetail } from './screens/ExportFileDetail';
 
 /** Internal routes require a signed-in user (Phase A: demo sign-in). External
  *  magic-link routes stay public. */
@@ -49,6 +51,8 @@ export default function App() {
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/alerts" element={<Alerts />} />
+        <Route path="/exports" element={<ExportFilesList />} />
+        <Route path="/exports/:id" element={<ExportFileDetail />} />
       </Route>
 
       <Route path="/u/:fileNumber/fwd/:token" element={<MagicLinkPage party="forwarder" />} />
