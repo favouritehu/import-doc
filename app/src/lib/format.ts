@@ -2,7 +2,7 @@
 // the ONLY sanctioned way to read a file's worth or vendor — ImportFile has no
 // top-level supplier/usd mirror, so these aggregate across invoices[].
 
-import type { Currency, ImportFile, Invoice, Payment } from '../types';
+import type { Currency, ExportFile, ImportFile, Invoice, Payment } from '../types';
 
 export const APPROX_INR_RATE: Record<Currency, number> = {
   USD: 83.2,
@@ -63,3 +63,22 @@ export function fxLine(p: Payment): string {
 }
 
 export const fxAmount = (usd: number, cur: Currency): string => `${cur} ${groupAmount(usd)}`;
+
+// ── Export Desk — value / buyer-label helpers ───────────────────────────
+// Mirrors of fileValueInr/supplierLabel/distinctSuppliers for ExportFile —
+// ExportFile has no top-level buyer/usd mirror either; value and buyer live
+// per ExportInvoice (usd/rate, buyer).
+
+export const exportValueInr = (f: ExportFile): number =>
+  f.invoices.reduce((sum, i) => sum + Math.round(i.usd * i.rate), 0);
+
+export function distinctBuyers(f: ExportFile): string[] {
+  return [...new Set(f.invoices.map((i) => i.buyer))];
+}
+
+export function buyerLabel(f: ExportFile): string {
+  const b = distinctBuyers(f);
+  if (b.length === 0) return '—';
+  if (b.length === 1) return b[0];
+  return `${b[0]} +${b.length - 1}`;
+}

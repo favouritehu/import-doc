@@ -7,6 +7,7 @@ import {
   isRequiredExport,
   reqMissingExport,
 } from '../lib/deriveExport';
+import { buyerLabel, distinctBuyers, exportValueInr } from '../lib/format';
 
 const byId = (id: number): ExportFile => structuredClone(EXPORT_SEED_FILES.find((f) => f.id === id)!);
 
@@ -161,5 +162,25 @@ describe('derivePriorityExport', () => {
   });
   it('otherwise preserves the seeded priority', () => {
     expect(derivePriorityExport(byId(7))).toBe('normal');
+  });
+});
+
+describe('format.ts — export value / buyer helpers', () => {
+  it('exportValueInr sums across all invoices', () => {
+    const f4 = byId(4); // multi-invoice: 58,000 + 19,500 USD
+    const sum = Math.round(f4.invoices[0].usd * f4.invoices[0].rate) + Math.round(f4.invoices[1].usd * f4.invoices[1].rate);
+    expect(exportValueInr(f4)).toBe(sum);
+  });
+
+  it('distinctBuyers/buyerLabel collapse to a single name for a single-invoice file', () => {
+    const f1 = byId(1);
+    expect(distinctBuyers(f1)).toEqual(['Hamburg Organic GmbH']);
+    expect(buyerLabel(f1)).toBe('Hamburg Organic GmbH');
+  });
+
+  it('buyerLabel shows "+N" for a multi-buyer file', () => {
+    const f4 = byId(4); // Rotterdam Pulp Traders BV + Amsterdam Pack & Co.
+    expect(distinctBuyers(f4)).toHaveLength(2);
+    expect(buyerLabel(f4)).toBe('Rotterdam Pulp Traders BV +1');
   });
 });
