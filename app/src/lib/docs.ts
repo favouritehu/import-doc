@@ -4,6 +4,8 @@
 import type {
   ChaStepStatus,
   DocStatus,
+  ExportFileStatus,
+  ExportPaymentType,
   FileStatus,
   PayStatus,
   PaymentType,
@@ -67,7 +69,24 @@ export const DOC_META: Record<string, DocMeta> = {
   assessment_copy: { label: 'Assessment Copy', zh: '评估单', abbr: 'ASM', tint: '#FEF3C7', fg: '#92400E' },
   out_of_charge: { label: 'Out of Charge', zh: '放行单', abbr: 'OOC', tint: '#FEF3C7', fg: '#92400E' },
   delivery_order: { label: 'Delivery Order', zh: '提货单', abbr: 'DO', tint: '#FEF3C7', fg: '#92400E' },
+  // ── Export Desk (Phase 1) ─────────────────────────────────────────────
+  export_commercial_invoice: { label: 'Export Commercial Invoice', zh: '出口商业发票', abbr: 'CI', tint: '#DBEAFE', fg: '#1E40AF' },
+  export_packing_list: { label: 'Export Packing List', zh: '出口装箱单', abbr: 'PL', tint: '#DBEAFE', fg: '#1E40AF' },
+  lut_bond: { label: 'LUT / Bond', zh: 'LUT/保函', abbr: 'LUT', tint: '#DCFCE7', fg: '#166534' },
+  shipping_bill: { label: 'Shipping Bill', zh: '出口报关单', abbr: 'SB', tint: '#FEF3C7', fg: '#92400E' },
+  firc_brc: { label: 'FIRC / BRC', zh: '外汇实现证明', abbr: 'FIRC', tint: '#FEF3C7', fg: '#92400E' },
 };
+
+// ── Export Desk (Phase 1) — document type-group tables ──────────────────
+
+/** Per-invoice document types (one set per ExportInvoice). */
+export const EXPORT_INVOICE_DOC_TYPES = ['export_commercial_invoice', 'export_packing_list'] as const;
+
+/** File-level gate docs (exporter provides, pre-customs). */
+export const EXPORT_COMMON_FILE_DOCS = ['lut_bond', 'certificate_of_origin', 'insurance_copy'] as const;
+
+/** File-level customs / post docs (produced during/after customs — excluded from the gate). */
+export const EXPORT_CUSTOMS_DOCS = ['shipping_bill', 'bill_of_lading', 'awb', 'firc_brc'] as const;
 
 export const docLabel = (type: string): string => DOC_META[type]?.label ?? type;
 export const docZh = (type: string): string => DOC_META[type]?.zh ?? type;
@@ -120,6 +139,28 @@ export const PAYMENT_LABELS: Record<PaymentType, string> = {
   duty: 'Customs Duty',
   cha_charges: 'CHA Charges',
   bank_charges: 'Bank Charges',
+  other: 'Other',
+};
+
+// ── Export Desk (Phase 1) — status / payment meta ────────────────────────
+
+export const exportStatusMeta: Record<ExportFileStatus, Tint> = {
+  draft: { label: 'Draft', bg: '#EEF2F7', fg: '#475569' },
+  documents_pending: { label: 'Docs Pending', bg: '#FEF3C7', fg: '#92400E' },
+  cha_work: { label: 'Shipping Bill', bg: '#E0E7FF', fg: '#3730A3' },
+  customs_cleared: { label: 'Customs Cleared', bg: '#DBEAFE', fg: '#1E40AF' },
+  shipped: { label: 'Shipped', bg: '#CCFBF1', fg: '#0F766E' },
+  payment_realized: { label: 'Payment Realized', bg: '#DCFCE7', fg: '#166534' },
+  closed: { label: 'Closed', bg: '#F1F5F9', fg: '#64748B' },
+};
+
+export const EXPORT_PAYMENT_LABELS: Record<ExportPaymentType, string> = {
+  advance_received: 'Advance received',
+  balance_received: 'Balance received',
+  freight: 'Freight',
+  insurance: 'Insurance',
+  cha_charges: 'CHA charges',
+  bank_charges: 'Bank charges',
   other: 'Other',
 };
 
