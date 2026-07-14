@@ -157,6 +157,18 @@ describe('§0 financial gating on export screens (rolePolicy.canSeeFinancials/ca
     expect(html).not.toContain('Financials hidden');
   });
 
+  it('import_manager on a payments-tab URL falls back to Summary body instead of rendering blank (effectiveTab guard)', () => {
+    const html = renderAsRole(
+      'import_manager',
+      <Routes>
+        <Route path="/exports/:id" element={<ExportFileDetail />} />
+      </Routes>,
+      '/exports/1?tab=payments',
+    );
+    expect(html).toContain('Shipment'); // SummaryTab heading — proves the body fell back, not blank
+    expect(html).not.toContain('Payments'); // still no Payments tab/body for this role
+  });
+
   it('import_manager sees no INR value on ExportFilesList cards (ExportFilesList gates showInr via canSeeFinancials)', () => {
     const e1Value = inr(exportValueInr(EXPORT_SEED_FILES.find((f) => f.id === 1)!)); // e1's INR figure
     const managerHtml = renderAsRole('import_manager', <ExportFilesList />);

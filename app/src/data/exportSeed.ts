@@ -220,6 +220,8 @@ const e3: ExportFile = {
   payments: [
     { type: 'advance_received', direction: 'receivable', currency: 'USD', usd: 27300, rate: 83.2, due: '08 Jun 2026', paid: '08 Jun 2026', status: 'paid', ref: 'INW-2220' },
     { type: 'balance_received', direction: 'receivable', currency: 'USD', usd: 63700, rate: 83.3, due: '05 Jul 2026', paid: null, status: 'pending', ref: '' },
+    // payable — freight/CHA/bank outflow; never gates status (see "payables never gate status" tests)
+    { type: 'freight', direction: 'payable', currency: 'USD', usd: 900, rate: 83, inr: 74700, due: '20 Jun 2026', paid: null, status: 'pending', ref: 'FRT-E-2201' },
   ],
   notes: [
     { a: MANAGER, r: 'Export Manager', m: 'Docs complete, LUT filed. Shipping bill to be filed this week.', t: '09 Jun 2026 14:30' },
