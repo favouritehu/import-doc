@@ -88,7 +88,7 @@ function renderAsRole(role: Role, ui: ReactNode, route = '/exports'): string {
 describe('export screens render with seed data (no runtime throw)', () => {
   it('ExportFilesList lists seeded buyers and status', () => {
     const html = render(<ExportFilesList />);
-    expect(html).toContain('Export files');
+    expect(html).toContain('Export Desk');
     expect(html).toContain('Hamburg Organic GmbH'); // e1 buyer
     expect(html).toContain('Customs Cleared'); // exportStatusMeta label for e1
   });

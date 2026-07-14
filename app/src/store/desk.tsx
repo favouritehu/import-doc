@@ -31,7 +31,7 @@ export function useDesk(): DeskCtx {
   return c;
 }
 
-const IMPORT_PATHS = ['/', '/today', '/calendar', '/files', '/pending-docs', '/pending-payments', '/cha-desk', '/reports'];
+const IMPORT_PATHS = ['/', '/today', '/calendar', '/files', '/pending-docs', '/pending-payments', '/cha-desk', '/reports', '/alerts'];
 
 /** Keeps `desk` in sync with the route: export routes force export, known import
  *  screens force import, shared screens (/settings) leave it unchanged. Mount once under Router. */

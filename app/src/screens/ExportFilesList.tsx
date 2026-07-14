@@ -75,7 +75,7 @@ export function ExportFilesList() {
   return (
     <>
       <TopBar
-        title="Export files"
+        title="Export Desk"
         subtitle={`${files.length} total${alertCount > 0 ? ` · ${alertCount} alert${alertCount > 1 ? 's' : ''}` : ''}`}
       />
       <Page>
