@@ -31,10 +31,14 @@ export function useDesk(): DeskCtx {
   return c;
 }
 
-const IMPORT_PATHS = ['/', '/today', '/calendar', '/files', '/pending-docs', '/pending-payments', '/cha-desk', '/reports', '/alerts'];
+// `/alerts` is intentionally SHARED (not listed here): both the import and the
+// export mobile nav link to it, so it must leave the active desk unchanged —
+// same as `/settings`. Otherwise tapping Alerts from the Export desk would flip
+// the whole nav back to Import.
+const IMPORT_PATHS = ['/', '/today', '/calendar', '/files', '/pending-docs', '/pending-payments', '/cha-desk', '/reports'];
 
 /** Keeps `desk` in sync with the route: export routes force export, known import
- *  screens force import, shared screens (/settings) leave it unchanged. Mount once under Router. */
+ *  screens force import, shared screens (/settings, /alerts) leave it unchanged. Mount once under Router. */
 export function DeskRouteSync() {
   const { pathname } = useLocation();
   const { desk, setDesk } = useDesk();
