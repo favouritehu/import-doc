@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { useIsMobile } from '../lib/useIsMobile';
 import { useStore } from '../store/store';
+import { DeskRouteSync } from '../store/desk';
 import { MobileBottomNav } from './MobileBottomNav';
 import { Sidebar } from './Sidebar';
 import { Toast } from './Toast';
@@ -18,6 +19,7 @@ export function AppShell() {
   }
   return (
     <div className="flex min-h-screen bg-page text-ink">
+      <DeskRouteSync />
       {!isMobile && <Sidebar />}
       <div className="flex min-w-0 flex-1 flex-col pb-24 md:pb-0">
         <Outlet />

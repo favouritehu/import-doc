@@ -88,7 +88,7 @@ function renderAsRole(role: Role, ui: ReactNode, route = '/exports'): string {
 describe('export screens render with seed data (no runtime throw)', () => {
   it('ExportFilesList lists seeded buyers and status', () => {
     const html = render(<ExportFilesList />);
-    expect(html).toContain('Export files');
+    expect(html).toContain('Export Desk');
     expect(html).toContain('Hamburg Organic GmbH'); // e1 buyer
     expect(html).toContain('Customs Cleared'); // exportStatusMeta label for e1
   });
@@ -155,6 +155,18 @@ describe('§0 financial gating on export screens (rolePolicy.canSeeFinancials/ca
     expect(html).toContain('Payments');
     expect(html).toContain('HSN 20089990');
     expect(html).not.toContain('Financials hidden');
+  });
+
+  it('import_manager on a payments-tab URL falls back to Summary body instead of rendering blank (effectiveTab guard)', () => {
+    const html = renderAsRole(
+      'import_manager',
+      <Routes>
+        <Route path="/exports/:id" element={<ExportFileDetail />} />
+      </Routes>,
+      '/exports/1?tab=payments',
+    );
+    expect(html).toContain('Shipment'); // SummaryTab heading — proves the body fell back, not blank
+    expect(html).not.toContain('Payments'); // still no Payments tab/body for this role
   });
 
   it('import_manager sees no INR value on ExportFilesList cards (ExportFilesList gates showInr via canSeeFinancials)', () => {

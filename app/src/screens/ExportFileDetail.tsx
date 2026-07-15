@@ -73,6 +73,8 @@ function ExportFileDetailBody({ file }: { file: ExportFile }) {
     ...(canFin ? [{ key: 'payments', label: 'Payments' }] : []),
     { key: 'notes', label: 'Notes' },
   ];
+  const permittedTabs = new Set(tabs.map((t) => t.key));
+  const effectiveTab = permittedTabs.has(tab) ? tab : 'summary';
 
   // resolve the live doc behind the slide-over
   const slideDoc: Doc | null = (() => {
@@ -172,11 +174,11 @@ function ExportFileDetailBody({ file }: { file: ExportFile }) {
           ))}
         </div>
 
-        {tab === 'summary' && (
+        {effectiveTab === 'summary' && (
           <SummaryTab file={file} canFin={canFin} canHsn={canHsn} alerts={alerts} onGoDocs={() => setTab('documents')} />
         )}
 
-        {tab === 'documents' && (
+        {effectiveTab === 'documents' && (
           <div className="flex flex-col gap-4">
             <h3 className="font-display text-sm font-bold text-ink">Documents</h3>
             <DocumentChecklist groups={docGroups} onRow={(d, invoiceId) => setSlide({ type: d.type, invoiceId })} />
@@ -189,11 +191,11 @@ function ExportFileDetailBody({ file }: { file: ExportFile }) {
           </div>
         )}
 
-        {tab === 'payments' && canFin && (
+        {effectiveTab === 'payments' && canFin && (
           <PaymentsTab file={file} onAddPayment={() => setAddPay(true)} />
         )}
 
-        {tab === 'notes' && <NotesTimeline notes={file.notes} onAdd={(m) => store.addNote(file.id, m)} />}
+        {effectiveTab === 'notes' && <NotesTimeline notes={file.notes} onAdd={(m) => store.addNote(file.id, m)} />}
       </Page>
 
       {slideDoc && (
@@ -260,6 +262,9 @@ function SummaryTab({
     ['Shipping bill no', file.shippingBillNo ?? '—'],
   ];
   const gatePending = gateDocsExport(file).filter((d) => d.status === 'missing' || d.status === 'discrepant');
+  // gatePending callout below already lists missing gate docs — drop 'missing'
+  // alerts here to avoid double-surfacing the same thing twice in the aside.
+  const asideAlerts = alerts.filter((a) => a.kind !== 'missing');
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -305,13 +310,13 @@ function SummaryTab({
 
       <aside>
         <h3 className="mb-2 font-display text-sm font-bold text-ink">What's pending</h3>
-        {alerts.length === 0 && gatePending.length === 0 ? (
+        {asideAlerts.length === 0 && gatePending.length === 0 ? (
           <div className="rounded-card border border-border bg-white p-3 text-sm text-muted shadow-card">
             All required documents are in.
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {alerts.map((a, i) => (
+            {asideAlerts.map((a, i) => (
               <div
                 key={i}
                 className="rounded-card border p-3 shadow-card"

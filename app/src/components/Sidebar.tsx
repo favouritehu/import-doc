@@ -1,13 +1,15 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { cx } from '../lib/cx';
-import { navForRole } from '../lib/nav';
+import { navFor } from '../lib/nav';
 import { navBadges } from '../lib/pending';
 import { magicPath } from '../lib/links';
 import { ROLE_LABEL } from '../lib/rolePolicy';
 import { USERS } from '../data/seed';
 import { useStore } from '../store/store';
+import { useDesk } from '../store/desk';
 import { NAV_ICONS, NAV_ICON_FALLBACK } from './navIcons';
+import { DeskSwitch } from './DeskSwitch';
 
 export function Logo({ size = 36 }: { size?: number }) {
   return (
@@ -22,8 +24,9 @@ export function Logo({ size = 36 }: { size?: number }) {
 
 export function Sidebar() {
   const { role, user, files, signOut } = useStore();
+  const { desk } = useDesk();
   const badges = navBadges(files);
-  const items = navForRole(role);
+  const items = navFor(desk, role);
   const me = user ?? USERS.find((u) => u.role === role);
   const nav = useNavigate();
 
@@ -36,6 +39,8 @@ export function Sidebar() {
           <div className="text-[11px] text-white/55">Favourite Fab</div>
         </div>
       </div>
+
+      <DeskSwitch variant="dark" className="mx-1 mb-3" />
 
       <nav className="flex flex-1 flex-col gap-0.5">
         {items.map((it) => {
