@@ -40,6 +40,12 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface PaymentExtract {
+  amount: number;
+  currency: string;
+  ref: string;
+}
+
 export interface ExtractedInvoice {
   supplier: string;
   invoiceNumber: string;
