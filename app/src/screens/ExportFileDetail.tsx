@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Lock, Upload } from 'lucide-react';
 import type { Currency, Doc, ExportFile, ExportPaymentType } from '../types';
@@ -16,6 +16,9 @@ import { buyerLabel, exportValueInr, fxLine, inr, inrCompact, payInr } from '../
 import { EXPORT_COMMON_FILE_DOCS, EXPORT_CUSTOMS_DOCS, EXPORT_PAYMENT_LABELS, exportStatusMeta, payStatusMeta } from '../lib/docs';
 import { RolePolicy } from '../lib/rolePolicy';
 import { useExportStore, type ExportAddPaymentInput } from '../store/exportStore';
+import { aiExtractPayment, AiError, CURRENCY_SAFE } from '../lib/ai';
+import { extractText } from '../lib/ocr';
+import { interpretScan } from '../lib/scanPayment';
 
 const inputCls = 'w-full rounded-card border border-border px-3 py-2.5 text-sm outline-none focus:border-navy';
 const GATE_TYPES = new Set<string>(EXPORT_COMMON_FILE_DOCS);
@@ -202,7 +205,7 @@ function ExportFileDetailBody({ file }: { file: ExportFile }) {
         <ExportFilePreviewModal file={file} doc={slideDoc} invoiceId={slide?.invoiceId} onClose={() => setSlide(null)} />
       )}
       {addPay && (
-        <ExportAddPaymentModal onClose={() => setAddPay(false)} onAdd={(p) => store.addPayment(file.id, p)} />
+        <ExportAddPaymentModal file={file} onClose={() => setAddPay(false)} onAdd={(p) => store.addPayment(file.id, p)} />
       )}
       {confirmDel && (
         <Modal
@@ -402,17 +405,67 @@ const EXPORT_PAY_TYPES: ExportPaymentType[] = [
 const CURRENCIES: Currency[] = ['USD', 'EUR', 'CNY', 'INR'];
 
 function ExportAddPaymentModal({
+  file,
   onClose,
   onAdd,
 }: {
+  file: ExportFile;
   onClose: () => void;
   onAdd: (p: ExportAddPaymentInput) => void;
 }) {
+  const store = useExportStore();
   const [type, setType] = useState<ExportPaymentType>('balance_received');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<Currency>('USD');
   const [due, setDue] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const valid = Number(amount) > 0;
+
+  // Export receivables are realized against the bank FIRC/BRC.
+  const canScan = type === 'advance_received' || type === 'balance_received';
+  const docLabel = 'FIRC/BRC';
+
+  async function docFileToFile(url: string, name: string): Promise<File> {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return new File([blob], name || 'document', { type: blob.type });
+  }
+
+  async function scanFrom(f: File) {
+    setScanning(true);
+    setScanNote(null);
+    try {
+      const text = await extractText([f]);
+      const r = await aiExtractPayment('firc', text);
+      const outcome = interpretScan(r, docLabel);
+      if (outcome.amount) setAmount(outcome.amount);
+      if (outcome.currency) setCurrency(CURRENCY_SAFE(outcome.currency));
+      setScanNote(outcome.note);
+    } catch (e) {
+      const msg = e instanceof AiError ? e.message : 'Scan failed — enter the amount manually.';
+      store.setToast({ m: msg, kind: 'error' });
+      setScanNote(msg);
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function runScan() {
+    const existing = file.docs.find((d) => d.type === 'firc_brc' && d.fileUrl);
+    if (existing?.fileUrl) {
+      try {
+        const f = await docFileToFile(existing.fileUrl, existing.fileName || 'firc_brc');
+        await scanFrom(f);
+      } catch {
+        store.setToast({ m: 'Could not read the uploaded document.', kind: 'error' });
+        setScanNote('Could not read the uploaded document.');
+      }
+      return;
+    }
+    fileInputRef.current?.click();
+  }
 
   return (
     <Modal
@@ -446,6 +499,27 @@ function ExportAddPaymentModal({
             ))}
           </select>
         </label>
+
+        {canScan && (
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (f) void scanFrom(f);
+              }}
+            />
+            <Button variant="ghost" disabled={scanning} onClick={() => void runScan()}>
+              {scanning ? 'Scanning…' : 'Scan FIRC/BRC (AI)'}
+            </Button>
+            {scanNote && <p className="mt-1 text-xs text-muted">{scanNote}</p>}
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-2">
           <label className="col-span-2 block">
             <span className="mb-1 block text-xs font-semibold text-muted">Amount</span>

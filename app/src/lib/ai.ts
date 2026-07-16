@@ -40,6 +40,12 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface PaymentExtract {
+  amount: number;
+  currency: string;
+  ref: string;
+}
+
 export interface ExtractedInvoice {
   supplier: string;
   invoiceNumber: string;
@@ -163,6 +169,14 @@ export interface UpdateFields {
 export async function aiUpdate(text: string): Promise<UpdateFields> {
   const r = await post<{ fields: UpdateFields }>('/ai/update', { text });
   return r.fields;
+}
+
+/** Scan a source document's OCR text into {amount, currency, ref} for a payment. */
+export async function aiExtractPayment(
+  kind: 'duty' | 'freight' | 'firc',
+  text: string,
+): Promise<PaymentExtract> {
+  return post<PaymentExtract>('/ai/extract-payment', { kind, text });
 }
 
 export interface ReminderPayload {

@@ -8,6 +8,7 @@ import {
   translate,
   chaseMessage,
   extractUpdate,
+  extractPayment,
   aiStatus,
   AiError,
   type InputFile,
@@ -111,6 +112,19 @@ export const ai: FastifyPluginAsync = async (app) => {
     if (!b?.text) return reply.code(400).send({ error: 'no_text' });
     try {
       return { text: await translate(b.text, b.to === 'zh' ? 'zh' : 'en') };
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  // Scan a source doc's OCR text -> {amount, currency, ref} for a payment.
+  app.post('/extract-payment', async (req, reply) => {
+    const b = req.body as { kind?: string; text?: string };
+    if (b?.kind !== 'duty' && b?.kind !== 'freight' && b?.kind !== 'firc')
+      return reply.code(400).send({ error: 'bad_kind' });
+    if (!b?.text?.trim()) return reply.code(400).send({ error: 'no_text' });
+    try {
+      return await extractPayment(b.kind, b.text);
     } catch (e) {
       return fail(reply, e);
     }
