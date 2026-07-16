@@ -329,6 +329,35 @@ export async function translate(text: string, to: 'en' | 'zh'): Promise<string> 
   return str((raw as any)?.text) || text;
 }
 
+// ── Payment amount scan (duty / freight / firc) ───────────────────────
+
+export interface PaymentExtract { amount: number; currency: string; ref: string }
+
+const PAYMENT_PROMPTS: Record<'duty' | 'freight' | 'firc', string> = {
+  duty: `You read an Indian customs Bill of Entry. Extract the TOTAL DUTY PAYABLE (BCD + IGST + Social Welfare Surcharge + any other customs duty/cess — the final total duty, NOT the assessable/CIF value). OUTPUT JSON ONLY: {"amount":0,"currency":"INR","ref":""}. Duty is always INR. ref = Bill of Entry number. Do not invent values; use 0/"" if genuinely absent.`,
+  freight: `You read a freight invoice for a shipment. Extract the TOTAL FREIGHT AMOUNT CHARGED and its currency. OUTPUT JSON ONLY: {"amount":0,"currency":"USD|EUR|CNY|INR","ref":""}. ref = freight invoice number. Do not invent values; use 0/"" if genuinely absent.`,
+  firc: `You read a bank FIRC/BRC (Foreign Inward Remittance / Bank Realization Certificate) for an export. Extract the REMITTANCE AMOUNT RECEIVED and its currency. OUTPUT JSON ONLY: {"amount":0,"currency":"USD|EUR|CNY|INR","ref":""}. ref = FIRC/BRC reference number. Do not invent values; use 0/"" if absent.`,
+};
+
+export async function extractPayment(
+  kind: 'duty' | 'freight' | 'firc',
+  text: string,
+): Promise<PaymentExtract> {
+  if (!textConfigured()) throw new AiError('ai_not_configured: set DEEPSEEK_API_KEY', 503);
+  const user = `DOCUMENT TEXT (OCR — may have noise):\n${text.slice(0, 6000)}`;
+  const dflt = kind === 'duty' ? 'INR' : 'USD';
+  const raw =
+    textProvider() === 'deepseek'
+      ? await deepseekJson(PAYMENT_PROMPTS[kind], user)
+      : await geminiJson([{ text: `${PAYMENT_PROMPTS[kind]}\n\n${user}` }]);
+  const r = raw as any;
+  return {
+    amount: coerceAmount(r?.amount),
+    currency: coerceCurrency(r?.currency ?? dflt),
+    ref: str(r?.ref),
+  };
+}
+
 // ── Supplier chase message (bilingual) ────────────────────────────────
 
 export interface ChaseInput {

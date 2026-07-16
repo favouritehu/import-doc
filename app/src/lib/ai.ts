@@ -171,6 +171,14 @@ export async function aiUpdate(text: string): Promise<UpdateFields> {
   return r.fields;
 }
 
+/** Scan a source document's OCR text into {amount, currency, ref} for a payment. */
+export async function aiExtractPayment(
+  kind: 'duty' | 'freight' | 'firc',
+  text: string,
+): Promise<PaymentExtract> {
+  return post<PaymentExtract>('/ai/extract-payment', { kind, text });
+}
+
 export interface ReminderPayload {
   fileNumber: string;
   kind: 'etd' | 'eta';
