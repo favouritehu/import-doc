@@ -460,6 +460,7 @@ function ExportAddPaymentModal({
         await scanFrom(f);
       } catch {
         store.setToast({ m: 'Could not read the uploaded document.', kind: 'error' });
+        setScanNote('Could not read the uploaded document.');
       }
       return;
     }

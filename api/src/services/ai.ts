@@ -353,7 +353,7 @@ export async function extractPayment(
   const r = raw as any;
   return {
     amount: coerceAmount(r?.amount),
-    currency: coerceCurrency(r?.currency ?? dflt),
+    currency: kind === 'duty' ? 'INR' : coerceCurrency(r?.currency ?? dflt),
     ref: str(r?.ref),
   };
 }
