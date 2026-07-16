@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Bell, Check, FileUp, FolderDown, Link2, Loader2, Lock, Pencil, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
 import type { Currency, Doc, ImportFile, Incoterm, Invoice, Mode, PaymentType, Priority, User } from '../types';
@@ -23,7 +23,19 @@ import { cx } from '../lib/cx';
 import { derivePriority, deriveStatus, relevantPayments, requiredMissingDocs, responsibleOf } from '../lib/derive';
 import { APPROX_INR_RATE, fileValueInr, inr, inrCompact, invoiceInr, supplierLabel } from '../lib/format';
 import { COMMON_FILE_DOCS, CUSTOMS_DOCS, PAYMENT_LABELS, docLabel } from '../lib/docs';
-import { aiClassify, aiChase, aiUpdate, sendTestReminder, AiError, type ClassifyResult, type UpdateFields } from '../lib/ai';
+import {
+  aiClassify,
+  aiChase,
+  aiExtractPayment,
+  aiUpdate,
+  sendTestReminder,
+  AiError,
+  CURRENCY_SAFE,
+  type ClassifyResult,
+  type UpdateFields,
+} from '../lib/ai';
+import { extractText } from '../lib/ocr';
+import { interpretScan } from '../lib/scanPayment';
 import { fmtDate, isoOf, parseDate, todayIso } from '../lib/dates';
 import { shipmentReminders } from '../lib/reminders';
 import { RolePolicy } from '../lib/rolePolicy';
@@ -381,7 +393,9 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
 
       {slideDoc && <FilePreviewModal file={file} doc={slideDoc} invoiceId={slide?.invoiceId} onClose={() => setSlide(null)} />}
       {linkOpen && <MagicLinkPanel file={file} onClose={() => setLinkOpen(false)} />}
-      {addPay && <AddPaymentModal onClose={() => setAddPay(false)} onAdd={(p) => store.addPayment(file.id, p)} />}
+      {addPay && (
+        <AddPaymentModal file={file} onClose={() => setAddPay(false)} onAdd={(p) => store.addPayment(file.id, p)} />
+      )}
       {addInv && <AddInvoiceModal canFin={canFin} onClose={() => setAddInv(false)} onAdd={(d) => store.addInvoice(file.id, d)} />}
       {addScope && (
         <AddPartyFileModal
@@ -598,17 +612,69 @@ const CURRENCIES: Currency[] = ['USD', 'EUR', 'CNY', 'INR'];
 const inputCls = 'w-full rounded-card border border-border px-3 py-2.5 text-sm outline-none focus:border-navy';
 
 function AddPaymentModal({
+  file,
   onClose,
   onAdd,
 }: {
+  file: ImportFile;
   onClose: () => void;
   onAdd: (p: { type: PaymentType; amount: number; currency: Currency; due: string }) => void;
 }) {
+  const store = useStore();
   const [type, setType] = useState<PaymentType>('balance');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<Currency>('USD');
   const [due, setDue] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const valid = Number(amount) > 0;
+
+  // Only duty & freight have a scannable source doc.
+  const scanKind: 'duty' | 'freight' | null =
+    type === 'duty' ? 'duty' : type === 'freight' ? 'freight' : null;
+  const scanLabel = scanKind === 'duty' ? 'Scan Bill of Entry (AI)' : 'Scan Freight Invoice (AI)';
+  const docLabel = scanKind === 'duty' ? 'Bill of Entry' : 'Freight Invoice';
+
+  async function docFileToFile(url: string, name: string): Promise<File> {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return new File([blob], name || 'document', { type: blob.type });
+  }
+
+  async function scanFrom(f: File, kind: 'duty' | 'freight') {
+    setScanning(true);
+    setScanNote(null);
+    try {
+      const text = await extractText([f]);
+      const r = await aiExtractPayment(kind, text);
+      const outcome = interpretScan(r, docLabel);
+      if (outcome.amount) setAmount(outcome.amount);
+      if (outcome.currency) setCurrency(CURRENCY_SAFE(outcome.currency));
+      setScanNote(outcome.note);
+    } catch (e) {
+      const msg = e instanceof AiError ? e.message : 'Scan failed — enter the amount manually.';
+      store.showToast(msg, 'error');
+      setScanNote(msg);
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function runScan(kind: 'duty' | 'freight') {
+    const docType = kind === 'duty' ? 'bill_of_entry' : 'freight_invoice';
+    const existing = file.docs.find((d) => d.type === docType && d.fileUrl);
+    if (existing?.fileUrl) {
+      try {
+        const f = await docFileToFile(existing.fileUrl, existing.fileName || docType);
+        await scanFrom(f, kind);
+      } catch {
+        store.showToast('Could not read the uploaded document.', 'error');
+      }
+      return;
+    }
+    fileInputRef.current?.click();
+  }
 
   return (
     <Modal
@@ -642,6 +708,27 @@ function AddPaymentModal({
             ))}
           </select>
         </label>
+
+        {scanKind && (
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (f) void scanFrom(f, scanKind);
+              }}
+            />
+            <Button variant="ghost" disabled={scanning} onClick={() => void runScan(scanKind)}>
+              {scanning ? 'Scanning…' : scanLabel}
+            </Button>
+            {scanNote && <p className="mt-1 text-xs text-muted">{scanNote}</p>}
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-2">
           <label className="col-span-2 block">
             <span className="mb-1 block text-xs font-semibold text-muted">Amount</span>
