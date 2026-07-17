@@ -85,7 +85,11 @@ export function ExportFilesList() {
         </div>
 
         {filtered.length === 0 ? (
-          <EmptyState icon={FolderOpen} title="No matching files" sub="Try a different filter or search term." />
+          files.length === 0 ? (
+            <EmptyState icon={FolderOpen} title="No export files yet" sub="Tap “New file” to create your first export shipment." />
+          ) : (
+            <EmptyState icon={FolderOpen} title="No matching files" sub="Try a different filter or search term." />
+          )
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {filtered.map((f) => (

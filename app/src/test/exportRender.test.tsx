@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { StoreProvider } from '../store/store';
 import { ExportStoreProvider } from '../store/exportStore';
 import { SEED_FILES, USERS } from '../data/seed';
-import { EXPORT_SEED_FILES } from '../data/exportSeed';
+import { EXPORT_SAMPLE_FILES } from '../data/exportSeed';
 import { ExportFilesList } from '../screens/ExportFilesList';
 import { ExportFileDetail } from '../screens/ExportFileDetail';
 import type { Role } from '../types';
@@ -61,7 +61,7 @@ function render(ui: ReactNode, route = '/exports'): string {
   return renderToStaticMarkup(
     <MemoryRouter initialEntries={[route]}>
       <StoreProvider initialFiles={SEED_FILES}>
-        <ExportStoreProvider initialFiles={EXPORT_SEED_FILES}>{ui}</ExportStoreProvider>
+        <ExportStoreProvider initialFiles={EXPORT_SAMPLE_FILES}>{ui}</ExportStoreProvider>
       </StoreProvider>
     </MemoryRouter>,
   );
@@ -170,7 +170,7 @@ describe('§0 financial gating on export screens (rolePolicy.canSeeFinancials/ca
   });
 
   it('import_manager sees no INR value on ExportFilesList cards (ExportFilesList gates showInr via canSeeFinancials)', () => {
-    const e1Value = inr(exportValueInr(EXPORT_SEED_FILES.find((f) => f.id === 1)!)); // e1's INR figure
+    const e1Value = inr(exportValueInr(EXPORT_SAMPLE_FILES.find((f) => f.id === 1)!)); // e1's INR figure
     const managerHtml = renderAsRole('import_manager', <ExportFilesList />);
     expect(managerHtml).not.toContain(e1Value);
 

@@ -1,6 +1,7 @@
-// Dummy Export Desk data, seeded to the ExportFile shape. 7 files are
-// engineered to exercise every deriveExportStatus branch + the multi-invoice
-// path (file 4). Mirrors app/src/data/seed.ts.
+// Export Desk demo/test fixture (EXPORT_SAMPLE_FILES). 7 files engineered to
+// exercise every deriveExportStatus branch + the multi-invoice path (file 4).
+// NOT seeded at runtime — EXPORT_SEED_FILES (bottom of file) is empty so the
+// live desk ships with no dummy data. Mirrors app/src/data/seed.ts's shape.
 
 import type { Currency, Doc, DocStatus, ExportFile, ExportInvoice } from '../types';
 import { mkDoc } from '../lib/checklist';
@@ -441,4 +442,12 @@ const e7: ExportFile = {
   ],
 };
 
-export const EXPORT_SEED_FILES: ExportFile[] = [e1, e2, e3, e4, e5, e6, e7];
+// Test/demo fixture — the 7 engineered files that exercise every
+// deriveExportStatus branch + the multi-invoice path. Used by tests only.
+// NOT seeded at runtime (see EXPORT_SEED_FILES below).
+export const EXPORT_SAMPLE_FILES: ExportFile[] = [e1, e2, e3, e4, e5, e6, e7];
+
+// Runtime seed: EMPTY. The Export desk ships with no dummy data — a returning
+// user's IndexedDB (key `export-desk-files-v2`) is the only source of files.
+// Kept as a named export so the store's seed path stays unchanged.
+export const EXPORT_SEED_FILES: ExportFile[] = [];

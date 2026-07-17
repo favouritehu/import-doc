@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ExportFile } from '../types';
-import { EXPORT_SEED_FILES } from '../data/exportSeed';
+import { EXPORT_SAMPLE_FILES } from '../data/exportSeed';
 import {
   derivePriorityExport,
   deriveExportStatus,
@@ -9,7 +9,7 @@ import {
 } from '../lib/deriveExport';
 import { buyerLabel, distinctBuyers, exportValueInr } from '../lib/format';
 
-const byId = (id: number): ExportFile => structuredClone(EXPORT_SEED_FILES.find((f) => f.id === id)!);
+const byId = (id: number): ExportFile => structuredClone(EXPORT_SAMPLE_FILES.find((f) => f.id === id)!);
 
 describe('deriveExportStatus — every ladder branch', () => {
   it('classifies each seed file at its intended stage', () => {
@@ -22,7 +22,7 @@ describe('deriveExportStatus — every ladder branch', () => {
       6: 'payment_realized',
       7: 'draft',
     };
-    for (const f of EXPORT_SEED_FILES) {
+    for (const f of EXPORT_SAMPLE_FILES) {
       expect(deriveExportStatus(f), `file ${f.id} (${f.fileNumber})`).toBe(want[f.id]);
     }
   });

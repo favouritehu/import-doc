@@ -35,7 +35,7 @@ import { APPROX_INR_RATE } from '../lib/format';
 import { idbGet, idbSet } from '../lib/idb';
 import { TODAY, useStore } from './store';
 
-const FILES_IDB_KEY = 'export-desk-files';
+const FILES_IDB_KEY = 'export-desk-files-v2';
 
 const RECEIVABLE_TYPES = new Set<ExportPaymentType>(['advance_received', 'balance_received']);
 
