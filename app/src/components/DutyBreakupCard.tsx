@@ -1,3 +1,4 @@
+import { Pencil } from 'lucide-react';
 import type { Duty } from '../types';
 import { inr } from '../lib/format';
 
@@ -5,7 +6,15 @@ export function dutyTotal(d: Duty): number {
   return d.bcd + d.sws + d.igst + d.cess + d.anti_dumping + d.other;
 }
 
-export function DutyBreakupCard({ duty, boeNumber }: { duty: Duty; boeNumber: string | null }) {
+export function DutyBreakupCard({
+  duty,
+  boeNumber,
+  onEdit,
+}: {
+  duty: Duty;
+  boeNumber: string | null;
+  onEdit?: () => void;
+}) {
   const rows: [string, number][] = [
     ['Basic Customs Duty (BCD)', duty.bcd],
     ['Social Welfare Surcharge', duty.sws],
@@ -20,7 +29,14 @@ export function DutyBreakupCard({ duty, boeNumber }: { duty: Duty; boeNumber: st
     <div className="rounded-card border border-border bg-white p-4 shadow-card">
       <div className="mb-3 flex items-center justify-between">
         <h4 className="font-display text-sm font-bold text-ink">Duty breakup</h4>
-        <span className="text-[11px] text-muted">{boeNumber ? `BOE ${boeNumber}` : 'BOE pending'}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-muted">{boeNumber ? `BOE ${boeNumber}` : 'BOE pending'}</span>
+          {onEdit && (
+            <button onClick={onEdit} className="inline-flex items-center gap-1 text-xs font-semibold text-navy hover:underline">
+              <Pencil size={12} /> Edit
+            </button>
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
         {rows.map(([label, val]) => (

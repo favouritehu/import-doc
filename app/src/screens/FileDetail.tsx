@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Bell, Check, FileUp, FolderDown, Link2, Loader2, Lock, Pencil, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
-import type { Currency, Doc, ImportFile, Incoterm, Invoice, Mode, PaymentType, Priority, User } from '../types';
+import type { Currency, Doc, Duty, ImportFile, Incoterm, Invoice, Mode, PaymentType, Priority, User } from '../types';
 import { Page } from '../components/AppShell';
 import { TopBar } from '../components/TopBar';
 import { Button } from '../components/Button';
@@ -93,6 +93,7 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
   const [chaseOpen, setChaseOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [zipping, setZipping] = useState(false);
+  const [editDuty, setEditDuty] = useState(false);
 
   const canFin = RolePolicy.canSeeFinancials(role);
   const canHsn = RolePolicy.canSeeHsn(role);
@@ -380,7 +381,7 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
                 return <PaymentCard key={idx} payment={p} onMarkPaid={() => store.markPaid(file.id, idx)} />;
               })}
             </div>
-            <DutyBreakupCard duty={file.duty} boeNumber={file.boeNumber} />
+            <DutyBreakupCard duty={file.duty} boeNumber={file.boeNumber} onEdit={() => setEditDuty(true)} />
           </div>
         )}
 
@@ -395,6 +396,13 @@ export function FileDetailBody({ file, onDeleted }: { file: ImportFile; onDelete
       {linkOpen && <MagicLinkPanel file={file} onClose={() => setLinkOpen(false)} />}
       {addPay && (
         <AddPaymentModal file={file} onClose={() => setAddPay(false)} onAdd={(p) => store.addPayment(file.id, p)} />
+      )}
+      {editDuty && (
+        <EditDutyModal
+          duty={file.duty}
+          onClose={() => setEditDuty(false)}
+          onSave={(duty) => store.updateFile(file.id, { duty })}
+        />
       )}
       {addInv && <AddInvoiceModal canFin={canFin} onClose={() => setAddInv(false)} onAdd={(d) => store.addInvoice(file.id, d)} />}
       {addScope && (
@@ -753,6 +761,77 @@ function AddPaymentModal({
           <span className="mb-1 block text-xs font-semibold text-muted">Due date (optional)</span>
           <input value={due} onChange={(e) => setDue(e.target.value)} className={inputCls} placeholder="e.g. 30 Jun 2026" />
         </label>
+      </div>
+    </Modal>
+  );
+}
+
+const DUTY_FIELDS: [keyof Duty, string][] = [
+  ['bcd', 'Basic Customs Duty (BCD)'],
+  ['sws', 'Social Welfare Surcharge'],
+  ['igst', 'IGST'],
+  ['cess', 'Compensation Cess'],
+  ['anti_dumping', 'Anti-dumping Duty'],
+  ['other', 'Other'],
+];
+
+function EditDutyModal({
+  duty,
+  onClose,
+  onSave,
+}: {
+  duty: Duty;
+  onClose: () => void;
+  onSave: (duty: Duty) => void;
+}) {
+  const [f, setF] = useState<Record<keyof Duty, string>>({
+    bcd: String(duty.bcd || ''),
+    sws: String(duty.sws || ''),
+    igst: String(duty.igst || ''),
+    cess: String(duty.cess || ''),
+    anti_dumping: String(duty.anti_dumping || ''),
+    other: String(duty.other || ''),
+  });
+  return (
+    <Modal
+      title="Duty breakup"
+      subtitle="From the assessed Bill of Entry"
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              onSave({
+                bcd: Number(f.bcd) || 0,
+                sws: Number(f.sws) || 0,
+                igst: Number(f.igst) || 0,
+                cess: Number(f.cess) || 0,
+                anti_dumping: Number(f.anti_dumping) || 0,
+                other: Number(f.other) || 0,
+              });
+              onClose();
+            }}
+          >
+            Save changes
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        {DUTY_FIELDS.map(([key, label]) => (
+          <L key={key} label={label}>
+            <input
+              value={f[key]}
+              onChange={(e) => setF((s) => ({ ...s, [key]: e.target.value.replace(/[^0-9.]/g, '') }))}
+              inputMode="decimal"
+              placeholder="0"
+              className={inputCls}
+            />
+          </L>
+        ))}
       </div>
     </Modal>
   );
