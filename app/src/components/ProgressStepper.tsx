@@ -6,11 +6,14 @@ import { STATUS_ORDER, STEP_LABELS } from '../lib/docs';
 
 export function ProgressStepper({ currentStatus }: { currentStatus: FileStatus }) {
   const idx = STATUS_ORDER.indexOf(currentStatus);
+  // A delivered/terminal shipment reads as COMPLETE: its reached node shows a
+  // green check instead of the navy "in progress" dot.
+  const complete = currentStatus === 'goods_received' || currentStatus === 'closed';
   return (
     <div className="no-scrollbar flex items-start gap-1 overflow-x-auto py-1">
       {STATUS_ORDER.map((s, i) => {
-        const done = i < idx;
-        const cur = i === idx;
+        const done = i < idx || (i === idx && complete);
+        const cur = i === idx && !complete;
         return (
           <Fragment key={s}>
             <div className="flex shrink-0 flex-col items-center gap-1">

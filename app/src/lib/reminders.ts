@@ -37,9 +37,11 @@ function isDeparted(file: ImportFile, today: string): boolean {
   return d != null && d <= 0; // today >= etd
 }
 
-/** True once goods have arrived (explicit arrivedOn OR derived goods_received). */
+/** True once the shipment is delivered/terminal: explicit arrivedOn, or a done
+ *  status (goods_received / closed). A terminal file can never be "overdue". */
 function isArrived(file: ImportFile): boolean {
-  return file.arrivedOn != null || deriveStatus(file) === 'goods_received';
+  const s = deriveStatus(file);
+  return file.arrivedOn != null || s === 'goods_received' || s === 'closed';
 }
 
 /**

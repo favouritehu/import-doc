@@ -36,7 +36,10 @@ export function railItem(f: ImportFile, today: string): RailItem {
   const base = { fileId: f.id, fileNumber: f.fileNumber,
     track: trackLine(f),
     cha: chaLine(f), party: supplierLabel(f) };
-  const arrived = !!f.arrivedOn || deriveStatus(f) === 'goods_received';
+  // Terminal states (goods_received / closed) count as arrived — a done shipment
+  // can never be "overdue". `derived` is reused below for the chip/phase.
+  const derived = deriveStatus(f);
+  const arrived = !!f.arrivedOn || derived === 'goods_received' || derived === 'closed';
   const d = daysBetween(today, f.eta); // whole days to ETA; null if no/garbled date
 
   let status: RailStatus;
@@ -60,7 +63,6 @@ export function railItem(f: ImportFile, today: string): RailItem {
     status = 'green';
     line = `Arrives in ${d} days`;
   }
-  const derived = deriveStatus(f);
   const meta = statusMeta[derived];
   const phase: RailItem['phase'] =
     derived === 'closed'
