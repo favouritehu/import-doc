@@ -250,6 +250,10 @@ export function StoreProvider({
   const syncBusy = useRef(false);
   const syncAgain = useRef(false);
   const retryTimer = useRef<number | null>(null);
+  // Consecutive failed sync passes. Used to suppress the "not saved" toast on a
+  // single transient blip (a retry is already scheduled and usually self-heals) —
+  // only warn once the retry has ALSO failed. Reset to 0 on any clean pass.
+  const syncFailStreak = useRef(0);
   const [users, setUsers] = useState<User[]>(() => loadUsers());
   const [toast, setToast] = useState<{ m: string; kind: 'info' | 'error' } | null>(null);
 
@@ -419,13 +423,22 @@ export function StoreProvider({
         }
         baseline.current = reconcileBaseline(baseline.current, snapshot, failed);
         if (failed.upserts.length || failed.deletes.length) {
-          showToast('Some changes not saved to server — will retry');
+          syncFailStreak.current += 1;
+          // Don't cry wolf on the first transient failure (cold serverless, a
+          // momentary 5xx/network blip): a retry is already scheduled and usually
+          // succeeds, so a save that self-heals must not flash a scary "not saved"
+          // toast. Only warn once the retry has ALSO failed.
+          if (syncFailStreak.current >= 2) {
+            showToast('Some changes not saved to server — will retry');
+          }
           if (retryTimer.current === null) {
             retryTimer.current = window.setTimeout(() => {
               retryTimer.current = null;
               void runSync();
             }, 8000);
           }
+        } else {
+          syncFailStreak.current = 0; // clean pass — reset the streak
         }
       } while (syncAgain.current);
     } finally {
